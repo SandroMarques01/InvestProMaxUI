@@ -1,0 +1,625 @@
+@page "/papeis"
+@using InvestProMax.SharedUI.Common
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+<header class="page-header">
+    <div>
+        <div class="breadcrumb">InvestProMax <Icon Name="chevron" Size="12" /> Carteira de investimentos</div>
+        <h1>Cadastro de papéis</h1>
+        <div class="ultima-atualizacao-cotacoes" style="font-size: 13px; color: var(--muted); margin-top: 4px;">
+            @ObterTextoUltimaAtualizacao()
+        </div>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn-secondary" @onclick="AtualizarCotacoesAsync" disabled="@(_atualizandoCotacoes || _carregando)">
+            <Icon Name="refresh" Size="16" /><span>Atualizar cotações</span>
+        </button>
+        <button type="button" class="btn btn-primary" @onclick="NovoAsync">
+            <Icon Name="plus" Size="16" /><span>Novo papel</span>
+        </button>
+    </div>
+</header>
+
+<div class="subnav">
+    <a href="papeis-geral">Visão geral</a>
+    <a href="papeis" class="active">Cadastro de papéis</a>
+</div>
+
+@if (_mensagemInfo is not null)
+{
+    <div class="alerta-sucesso">@_mensagemInfo</div>
+}
+
+@if (_mensagemErro is not null)
+{
+    <div class="alerta-erro">@_mensagemErro</div>
+}
+@if (_mensagemSucesso is not null)
+{
+    <div class="alerta-sucesso">@_mensagemSucesso</div>
+}
+
+<div class="filter-bar">
+    <label class="field" style="width: 160px;">
+        <span>Filtrar por tipo</span>
+        <select @bind="_filtroTipo" @bind:after="CarregarAsync">
+            <option value="">Todos</option>
+            @foreach (var tipo in Enum.GetValues<TipoPapel>())
+            {
+                <option value="@tipo">@tipo</option>
+            }
+        </select>
+    </label>
+
+    <div class="search-field" style="margin-top: 19px;">
+        <Icon Name="search" Size="16" />
+        <input type="text" placeholder="Filtrar por código ou nome..." @bind="_busca" @bind:event="oninput" />
+    </div>
+</div>
+
+@if (_mensagemErro is not null && _pagina is null)
+{
+    <div class="card state-card">
+        <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+            <Icon Name="alert" Size="28" />
+        </div>
+        <h2>Não foi possível carregar os papéis</h2>
+        <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+        <button type="button" class="btn btn-primary" @onclick="CarregarAsync">
+            <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+        </button>
+    </div>
+}
+else if (_pagina is null)
+{
+    <LoadingState Mensagem="Carregando papéis..." Subtitulo="Obtendo a lista de ativos cadastrados." />
+}
+else
+{
+    var itens = _pagina.Itens.AsEnumerable();
+    if (!string.IsNullOrWhiteSpace(_busca))
+    {
+        itens = itens.Where(p => p.Codigo.Contains(_busca, StringComparison.OrdinalIgnoreCase) || p.Nome.Contains(_busca, StringComparison.OrdinalIgnoreCase));
+    }
+    var lista = itens.ToList();
+
+    if (lista.Count == 0)
+    {
+        <div class="card state-card">
+            <div class="empty-icon"><Icon Name="papers" Size="28" /></div>
+            <h2>Nenhum papel encontrado</h2>
+            <p>Cadastre um novo papel ou importe seus extratos da B3.</p>
+            <button type="button" class="btn btn-primary" @onclick="NovoAsync">
+                <Icon Name="plus" Size="16" /><span>Cadastrar primeiro papel</span>
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Nome</th>
+                        <th class="alinhar-centro">Tipo</th>
+                        <th class="alinhar-direita">Cotação</th>
+                        <th class="alinhar-direita">Qtd. atual</th>
+                        <th class="alinhar-direita">Em aluguel</th>
+                        <th class="alinhar-direita">Preço médio</th>
+                        <th class="alinhar-centro">Status</th>
+                        <th class="alinhar-direita">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var papel in lista)
+                    {
+                        <tr>
+                            <td>
+                                <a class="paper-link" href="/papeis/@papel.Id">@papel.Codigo</a>
+                            </td>
+                            <td>@papel.Nome</td>
+                            <td class="alinhar-centro">
+                                <span class="badge badge-info">@papel.TipoPapel</span>
+                            </td>
+                            <td class="alinhar-direita">@papel.CotacaoAtual.ToString("C2")</td>
+                            <td class="alinhar-direita">@papel.QuantidadeAtual.ToString("N2")</td>
+                            <td class="alinhar-direita">@(papel.QuantidadeEmAluguel > 0 ? papel.QuantidadeEmAluguel.ToString("N2") : "–")</td>
+                            <td class="alinhar-direita">@papel.PrecoMedio.ToString("C2")</td>
+                            <td class="alinhar-centro">
+                                <span class="badge @(papel.Ativo ? "badge-positive" : "badge-neutral")">
+                                    @(papel.Ativo ? "Ativo" : "Inativo")
+                                </span>
+                            </td>
+                            <td class="alinhar-direita">
+                                <div class="row-actions">
+                                    <button type="button" title="Editar" @onclick="() => EditarAsync(papel)"><Icon Name="edit" Size="14" /></button>
+                                    <button type="button" title="Trocar código" @onclick="() => AbrirTrocaAsync(papel)"><Icon Name="refresh" Size="14" /></button>
+                                    <button type="button" title="Desdobramento / Grupamento" @onclick="() => AbrirDesdobramentoAsync(papel)"><Icon Name="arrow" Size="14" /></button>
+                                    <button type="button" class="danger" title="Remover" @onclick="() => RemoverAsync(papel)"><Icon Name="trash" Size="14" /></button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="table-footer">
+                <span>Total de @lista.Count papéis cadastrados</span>
+            </div>
+        </div>
+    }
+}
+
+<!-- Drawer: Novo / Editar Papel -->
+@if (_modeloForm is not null)
+{
+    <div class="overlay">
+        <button type="button" class="overlay-close" @onclick="CancelarFormulario"></button>
+        <div class="drawer">
+            <div class="drawer-head">
+                <div>
+                    <span>Formulário de papel</span>
+                    <h2>@(_editandoId is null ? "Novo papel" : $"Editar {_modeloForm.Codigo}")</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="CancelarFormulario"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modeloForm" OnValidSubmit="SalvarAsync" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+                <DataAnnotationsValidator />
+                
+                <div class="drawer-body">
+                    @if (_editandoId is null)
+                    {
+                        <div class="field">
+                            <span>Código do ticker</span>
+                            <InputText @bind-Value="_modeloForm.Codigo" placeholder="Ex: PETR4, HGLG11" />
+                            <ValidationMessage For="@(() => _modeloForm.Codigo)" />
+                        </div>
+                    }
+
+                    <div class="field">
+                        <span>Nome da empresa / fundo</span>
+                        <InputText @bind-Value="_modeloForm.Nome" placeholder="Ex: Petrobras PN" />
+                        <ValidationMessage For="@(() => _modeloForm.Nome)" />
+                    </div>
+
+                    <div class="field">
+                        <span>Tipo de papel</span>
+                        <InputSelect @bind-Value="_modeloForm.TipoPapel">
+                            @foreach (var tipo in Enum.GetValues<TipoPapel>())
+                            {
+                                <option value="@tipo">@tipo</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="field">
+                        <span>Cotação atual (R$)</span>
+                        <InputNumber @bind-Value="_modeloForm.CotacaoAtual" step="0.01" />
+                        <ValidationMessage For="@(() => _modeloForm.CotacaoAtual)" />
+                    </div>
+
+                    <div class="field">
+                        <span>Descrição (opcional)</span>
+                        <InputTextArea @bind-Value="_modeloForm.Descricao" placeholder="Anotações sobre a tese de investimento..." />
+                    </div>
+
+                    @if (_segmentosDisponiveis is not null && _segmentosDisponiveis.Count > 0)
+                    {
+                        <div class="field">
+                            <span>Segmentos vinculados</span>
+                            <div style="max-height: 140px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px;">
+                                @foreach (var seg in _segmentosDisponiveis)
+                                {
+                                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; margin-bottom: 6px; cursor: pointer;">
+                                        <input type="checkbox" checked="@_segmentosSelecionados.Contains(seg.Id)"
+                                               @onchange="(e) => AlternarSegmento(seg.Id, e.Value)" />
+                                        <span>@seg.Nome</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelarFormulario">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                        @(_salvando ? "Salvando..." : "Salvar papel")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<!-- Modal: Troca de Papel -->
+@if (_modeloTroca is not null)
+{
+    <div class="overlay modal-overlay">
+        <button type="button" class="overlay-close" @onclick="() => _modeloTroca = null"></button>
+        <section class="card modal">
+            <div class="drawer-head">
+                <div>
+                    <span>Operação de custódia</span>
+                    <h2>Trocar papel (@_modeloTroca.CodigoAtual)</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="() => _modeloTroca = null"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modeloTroca" OnValidSubmit="ExecutarTrocaAsync">
+                <DataAnnotationsValidator />
+                <div class="drawer-body">
+                    <p style="margin-top:0;color:var(--muted);font-size:11px;">
+                        Transfere todas as transações, dividendos e aluguéis deste papel para o papel de destino selecionado, desativando o papel de origem.
+                    </p>
+                    <div class="field">
+                        <span>Papel de destino</span>
+                        <InputSelect @bind-Value="_modeloTroca.PapelDestinoId">
+                            <option value="@Guid.Empty">Selecione o papel de destino...</option>
+                            @if (_pagina is not null)
+                            {
+                                @foreach (var p in _pagina.Itens.Where(x => x.Id != _papelTrocaId))
+                                {
+                                    <option value="@p.Id">@p.Codigo - @p.Nome</option>
+                                }
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="@(() => _modeloTroca.PapelDestinoId)" />
+                    </div>
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _modeloTroca = null">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                        @(_salvando ? "Trocando..." : "Confirmar troca")
+                    </button>
+                </div>
+            </EditForm>
+        </section>
+    </div>
+}
+
+<!-- Modal: Desdobramento / Grupamento -->
+@if (_modeloDesdobramento is not null)
+{
+    <div class="overlay modal-overlay">
+        <button type="button" class="overlay-close" @onclick="() => _modeloDesdobramento = null"></button>
+        <section class="card modal">
+            <div class="drawer-head">
+                <div>
+                    <span>Evento corporativo</span>
+                    <h2>Desdobramento / Grupamento</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="() => _modeloDesdobramento = null"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modeloDesdobramento" OnValidSubmit="ExecutarDesdobramentoAsync">
+                <DataAnnotationsValidator />
+                <div class="drawer-body">
+                    <div class="field">
+                        <span>Tipo de evento</span>
+                        <InputSelect @bind-Value="_modeloDesdobramento.Tipo">
+                            <option value="@TipoEventoPapel.Desdobramento">Desdobramento (Split)</option>
+                            <option value="@TipoEventoPapel.Grupamento">Grupamento (Inplit)</option>
+                        </InputSelect>
+                    </div>
+                    <div class="form-grid" style="margin-top: 14px;">
+                        <div class="field">
+                            <span>Fator multiplicador</span>
+                            <InputNumber @bind-Value="_modeloDesdobramento.Fator" step="0.0001" />
+                            <ValidationMessage For="@(() => _modeloDesdobramento.Fator)" />
+                        </div>
+                        <div class="field">
+                            <span>Data do evento</span>
+                            <InputDate @bind-Value="_modeloDesdobramento.Data" />
+                            <ValidationMessage For="@(() => _modeloDesdobramento.Data)" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _modeloDesdobramento = null">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                        @(_salvando ? "Processando..." : "Aplicar evento")
+                    </button>
+                </div>
+            </EditForm>
+        </section>
+    </div>
+}
+
+@code {
+    private PaginaResultado<PapelResponse>? _pagina;
+    private IReadOnlyList<SegmentoResponse>? _segmentosDisponiveis;
+    private string _filtroTipo = string.Empty;
+    private string _busca = string.Empty;
+    private string? _mensagemErro;
+    private string? _mensagemSucesso;
+    private string? _mensagemInfo;
+    private bool _salvando;
+    private bool _carregando;
+    private bool _atualizandoCotacoes;
+
+    private string ObterTextoUltimaAtualizacao()
+    {
+        var maiorData = _pagina?.Itens.Select(p => p.CotacaoAtualizadaEm).Where(d => d.HasValue).Max();
+        return DataHoraHelper.FormatarUltimaAtualizacaoCotacoes(maiorData);
+    }
+
+    private async Task AtualizarCotacoesAsync()
+    {
+        _mensagemErro = null;
+        _mensagemInfo = null;
+        _mensagemSucesso = null;
+
+        try
+        {
+            await ApiClient.SolicitarAtualizacaoCotacoesAsync();
+            _atualizandoCotacoes = true;
+            _mensagemInfo = "Atualização solicitada. Pode levar cerca de 1 minuto.";
+            StateHasChanged();
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(60));
+                _atualizandoCotacoes = false;
+                await InvokeAsync(async () =>
+                {
+                    await CarregarAsync();
+                    StateHasChanged();
+                });
+            });
+        }
+        catch (ApiException ex) when (ex.StatusCode == 429)
+        {
+            _mensagemErro = "Aguarde um minuto.";
+        }
+        catch (ApiException ex) when (ex.StatusCode == 503)
+        {
+            _mensagemErro = "Integração de cotações não configurada.";
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private Guid? _editandoId;
+    private FormPapel? _modeloForm;
+    private readonly HashSet<Guid> _segmentosSelecionados = new();
+
+    private FormTrocaCodigo? _modeloTroca;
+    private Guid _papelTrocaId;
+
+    private FormDesdobramento? _modeloDesdobramento;
+    private Guid _papelDesdobramentoId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarAsync();
+    }
+
+    private async Task CarregarAsync()
+    {
+        _carregando = true;
+        _mensagemErro = null;
+        try
+        {
+            TipoPapel? tipo = Enum.TryParse<TipoPapel>(_filtroTipo, out var t) ? t : null;
+            _pagina = await ApiClient.ListarPapeisAsync(tipo, page: 1, pageSize: 100);
+            var resSegmentos = await ApiClient.ListarSegmentosAsync(page: 1, pageSize: 100);
+            _segmentosDisponiveis = resSegmentos.Itens;
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private void NovoAsync()
+    {
+        _editandoId = null;
+        _segmentosSelecionados.Clear();
+        _modeloForm = new FormPapel();
+    }
+
+    private void EditarAsync(PapelResponse papel)
+    {
+        _editandoId = papel.Id;
+        _segmentosSelecionados.Clear();
+        foreach (var id in papel.SegmentoIds)
+        {
+            _segmentosSelecionados.Add(id);
+        }
+        _modeloForm = new FormPapel
+        {
+            Codigo = papel.Codigo,
+            Nome = papel.Nome,
+            TipoPapel = papel.TipoPapel,
+            CotacaoAtual = papel.CotacaoAtual,
+            Descricao = papel.Descricao
+        };
+    }
+
+    private void CancelarFormulario()
+    {
+        _modeloForm = null;
+        _editandoId = null;
+    }
+
+    private void AlternarSegmento(Guid id, object? valor)
+    {
+        if (valor is true)
+            _segmentosSelecionados.Add(id);
+        else
+            _segmentosSelecionados.Remove(id);
+    }
+
+    private async Task SalvarAsync()
+    {
+        if (_modeloForm is null) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            if (_editandoId is null)
+            {
+                await ApiClient.CriarPapelAsync(new CriarPapelRequest(
+                    _modeloForm.Codigo,
+                    _modeloForm.Nome,
+                    _modeloForm.TipoPapel,
+                    _modeloForm.CotacaoAtual,
+                    _modeloForm.Descricao,
+                    _segmentosSelecionados.ToList()));
+                _mensagemSucesso = "Papel cadastrado com sucesso!";
+            }
+            else
+            {
+                await ApiClient.AtualizarPapelAsync(_editandoId.Value, new AtualizarPapelRequest(
+                    _modeloForm.Nome,
+                    _modeloForm.TipoPapel,
+                    _modeloForm.CotacaoAtual,
+                    _modeloForm.Descricao,
+                    _segmentosSelecionados.ToList()));
+                _mensagemSucesso = "Papel atualizado com sucesso!";
+            }
+            _modeloForm = null;
+            _editandoId = null;
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private void AbrirTrocaAsync(PapelResponse papel)
+    {
+        _papelTrocaId = papel.Id;
+        _modeloTroca = new FormTrocaCodigo { CodigoAtual = papel.Codigo };
+    }
+
+    private async Task ExecutarTrocaAsync()
+    {
+        if (_modeloTroca is null || _modeloTroca.PapelDestinoId == Guid.Empty) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.TrocarPapelAsync(_papelTrocaId, new TrocarPapelRequest(_modeloTroca.PapelDestinoId));
+            _mensagemSucesso = $"Troca de papel realizada com sucesso.";
+            _modeloTroca = null;
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private void AbrirDesdobramentoAsync(PapelResponse papel)
+    {
+        _papelDesdobramentoId = papel.Id;
+        _modeloDesdobramento = new FormDesdobramento();
+    }
+
+    private async Task ExecutarDesdobramentoAsync()
+    {
+        if (_modeloDesdobramento is null) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.DesdobrarPapelAsync(_papelDesdobramentoId, new DesdobramentoRequest(
+                _modeloDesdobramento.Fator,
+                _modeloDesdobramento.Data,
+                _modeloDesdobramento.Tipo));
+            _mensagemSucesso = "Evento corporativo aplicado com sucesso!";
+            _modeloDesdobramento = null;
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private async Task RemoverAsync(PapelResponse papel)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.RemoverPapelAsync(papel.Id);
+            _mensagemSucesso = $"Papel {papel.Codigo} removido com sucesso.";
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private sealed class FormPapel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe o código.")]
+        public string Codigo { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe o nome.")]
+        public string Nome { get; set; } = string.Empty;
+
+        public TipoPapel TipoPapel { get; set; } = TipoPapel.Acao;
+
+        [System.ComponentModel.DataAnnotations.Range(0, double.MaxValue, ErrorMessage = "A cotação deve ser positiva.")]
+        public decimal CotacaoAtual { get; set; }
+
+        public string? Descricao { get; set; }
+    }
+
+    private sealed class FormTrocaCodigo
+    {
+        public string CodigoAtual { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Selecione o papel de destino.")]
+        public Guid PapelDestinoId { get; set; }
+    }
+
+    private sealed class FormDesdobramento
+    {
+        public TipoEventoPapel Tipo { get; set; } = TipoEventoPapel.Desdobramento;
+
+        [System.ComponentModel.DataAnnotations.Range(0.0001, double.MaxValue, ErrorMessage = "O fator deve ser maior que zero.")]
+        public decimal Fator { get; set; } = 2;
+
+        public DateOnly Data { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    }
+}

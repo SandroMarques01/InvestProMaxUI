@@ -1,0 +1,377 @@
+@inherits LayoutComponentBase
+@inject IInvestProMaxApiClient ApiClient
+@inject AuthState AuthState
+@inject NavigationManager Navegacao
+@inject IJSRuntime Js
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using InvestProMax.SharedUI.Dtos
+
+<div class="app-shell @(_collapsed ? "sidebar-collapsed" : "")">
+    <AuthorizeView>
+        <Authorized>
+            <aside class="sidebar @(_collapsed ? "collapsed" : "")">
+                <div class="side-head">
+                    <a href="" class="logo" title="InvestProMax">
+                        @if (!_collapsed)
+                        {
+                            <img src="_content/InvestProMax.SharedUI/images/logo.svg" alt="InvestProMax" style="height: 32px; max-width: 160px; object-fit: contain;" />
+                        }
+                        else
+                        {
+                            <img src="_content/InvestProMax.SharedUI/images/logo-icon.svg" alt="InvestProMax" style="height: 28px; width: 28px; object-fit: contain;" />
+                        }
+                    </a>
+                    <button type="button" class="icon-btn" @onclick="AlternarMenu" title="@(_collapsed ? "Expandir menu" : "Recolher menu")">
+                        <Icon Name="menu" Size="18" />
+                    </button>
+                </div>
+
+                <nav class="side-nav">
+                    <NavLink href="" Match="NavLinkMatch.All">
+                        <Icon Name="dashboard" />
+                        @if (!_collapsed) { <span>Dashboard</span> }
+                    </NavLink>
+                    <NavLink href="papeis-geral">
+                        <Icon Name="papers" />
+                        @if (!_collapsed) { <span>Papéis</span> }
+                    </NavLink>
+                    <NavLink href="transacoes">
+                        <Icon Name="transaction" />
+                        @if (!_collapsed) { <span>Transações</span> }
+                    </NavLink>
+                    <NavLink href="dividendos">
+                        <Icon Name="dividend" />
+                        @if (!_collapsed) { <span>Dividendos</span> }
+                    </NavLink>
+                    <NavLink href="inventario">
+                        <Icon Name="inventory" />
+                        @if (!_collapsed) { <span>Inventário</span> }
+                    </NavLink>
+                    <NavLink href="evolucao-patrimonial">
+                        <Icon Name="evolution" />
+                        @if (!_collapsed) { <span>Evolução Patrimonial</span> }
+                    </NavLink>
+                    <NavLink href="ativos">
+                        <Icon Name="assets" />
+                        @if (!_collapsed) { <span>Ativos</span> }
+                    </NavLink>
+                    <NavLink href="contas-a-pagar">
+                        <Icon Name="bills" />
+                        @if (!_collapsed) { <span>Contas a pagar</span> }
+                    </NavLink>
+                    <NavLink href="segmentos">
+                        <Icon Name="segments" />
+                        @if (!_collapsed) { <span>Segmentos</span> }
+                    </NavLink>
+                    <NavLink href="configuracoes">
+                        <Icon Name="settings" />
+                        @if (!_collapsed) { <span>Configurações</span> }
+                    </NavLink>
+                </nav>
+
+                <div class="side-user-container">
+                    <button type="button" class="side-user-btn" @onclick="AlternarMenuUsuario" title="Meu perfil e opções da conta">
+                        <div class="avatar">@ObterIniciais(context.User.Identity?.Name)</div>
+                        @if (!_collapsed)
+                        {
+                            <div class="side-user-info">
+                                <strong>@(context.User.Identity?.Name ?? "Usuário")</strong>
+                                <span>@(context.User.FindFirst(ClaimTypes.Email)?.Value ?? "InvestProMax")</span>
+                            </div>
+                            <Icon Name="chevron" Size="14" Class="user-chevron" />
+                        }
+                    </button>
+
+                    @if (_menuUsuarioAberto)
+                    {
+                        <div class="user-popover-backdrop" @onclick="FecharMenuUsuario"></div>
+                        <div class="user-popover @(_collapsed ? "collapsed-pos" : "")">
+                            <div class="user-popover-head">
+                                <div class="avatar" style="width: 40px; height: 40px; font-size: 14px;">@ObterIniciais(context.User.Identity?.Name)</div>
+                                <div class="user-popover-meta">
+                                    <strong>@(context.User.Identity?.Name ?? "Usuário")</strong>
+                                    <span>@(context.User.FindFirst(ClaimTypes.Email)?.Value ?? "InvestProMax")</span>
+                                    <div>
+                                        <span class="badge @(EhAdmin(context.User) ? "badge-positive" : "badge-info")" style="margin-top: 4px;">
+                                            @(EhAdmin(context.User) ? "Administrador" : "Usuário")
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="user-popover-menu">
+                                <button type="button" class="user-popover-item" @onclick="AlternarTemaAsync">
+                                    <Icon Name="@(_temaEscuro ? "sun" : "moon")" Size="16" />
+                                    <div class="item-text">
+                                        <strong>@(_temaEscuro ? "Tema claro" : "Tema escuro")</strong>
+                                        <small>@(_temaEscuro ? "Alternar para visualização clara" : "Alternar para visualização escura")</small>
+                                    </div>
+                                </button>
+                                <button type="button" class="user-popover-item" @onclick="AbrirModalTrocarSenha">
+                                    <Icon Name="settings" Size="16" />
+                                    <div class="item-text">
+                                        <strong>Trocar de senha</strong>
+                                        <small>Atualizar credenciais de acesso</small>
+                                    </div>
+                                </button>
+                                <button type="button" class="user-popover-item" @onclick="IrParaMinhaConta">
+                                    <Icon Name="user" Size="16" />
+                                    <div class="item-text">
+                                        <strong>Minha conta / E-mail</strong>
+                                        <small>Gerenciar dados cadastrais</small>
+                                    </div>
+                                </button>
+                                @if (EhAdmin(context.User))
+                                {
+                                    <button type="button" class="user-popover-item" @onclick="IrParaGerenciarUsuarios">
+                                        <Icon Name="assets" Size="16" />
+                                        <div class="item-text">
+                                            <strong>Gerenciar usuários</strong>
+                                            <small>Criar e administrar contas</small>
+                                        </div>
+                                    </button>
+                                }
+                            </div>
+                            <button type="button" class="user-popover-item logout-item" @onclick="SairAsync">
+                                <Icon Name="logout" Size="16" />
+                                <span>Sair da aplicação</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </aside>
+
+            <nav class="mobile-nav">
+                <NavLink href="" Match="NavLinkMatch.All">
+                    <Icon Name="dashboard" />
+                    <span>Dashboard</span>
+                </NavLink>
+                <NavLink href="papeis-geral">
+                    <Icon Name="papers" />
+                    <span>Papéis</span>
+                </NavLink>
+                <NavLink href="transacoes">
+                    <Icon Name="transaction" />
+                    <span>Transações</span>
+                </NavLink>
+                <NavLink href="dividendos">
+                    <Icon Name="dividend" />
+                    <span>Dividendos</span>
+                </NavLink>
+                <button type="button" class="mobile-user-btn" @onclick="AlternarMenuUsuario">
+                    <div class="avatar" style="width: 22px; height: 22px; font-size: 9px;">@ObterIniciais(context.User.Identity?.Name)</div>
+                    <span>Conta</span>
+                </button>
+            </nav>
+        </Authorized>
+    </AuthorizeView>
+
+    <main class="main-content @(_collapsed ? "collapsed" : "")">
+        @Body
+    </main>
+</div>
+
+@if (_modalTrocarSenhaAberto)
+{
+    <div class="overlay modal-overlay" @onclick="FecharModalTrocarSenha">
+        <div class="modal" @onclick:stopPropagation="true" style="max-width: 440px;">
+            <div class="modal-head" style="display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--line);">
+                <div>
+                    <h2 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--ink);">Trocar de senha</h2>
+                    <p style="margin: 3px 0 0; color: var(--muted); font-size: 11px;">Atualize suas credenciais de segurança</p>
+                </div>
+                <button type="button" class="icon-btn" @onclick="FecharModalTrocarSenha" style="color: var(--muted);"><Icon Name="close" Size="16" /></button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_msgErroSenha))
+            {
+                <div class="alerta-erro" style="margin: 16px 20px 0;">@_msgErroSenha</div>
+            }
+            @if (!string.IsNullOrEmpty(_msgSucessoSenha))
+            {
+                <div class="alerta-sucesso" style="margin: 16px 20px 0;">@_msgSucessoSenha</div>
+            }
+
+            <EditForm Model="_modeloSenhaModal" OnValidSubmit="ExecutarTrocarSenhaAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div style="display: flex; flex-direction: column; gap: 14px; padding: 20px;">
+                    <label class="field">
+                        <span>Senha atual</span>
+                        <InputText type="password" @bind-Value="_modeloSenhaModal.SenhaAtual" placeholder="••••••••" />
+                    </label>
+
+                    <label class="field">
+                        <span>Nova senha</span>
+                        <InputText type="password" @bind-Value="_modeloSenhaModal.NovaSenha" placeholder="Mínimo 8 caracteres" />
+                    </label>
+
+                    <label class="field">
+                        <span>Confirmar nova senha</span>
+                        <InputText type="password" @bind-Value="_confirmacaoSenha" placeholder="Repita a nova senha" />
+                    </label>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--surface-alt);">
+                    <button type="button" class="btn btn-secondary" @onclick="FecharModalTrocarSenha" disabled="@_salvandoSenha">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvandoSenha">
+                        @(_salvandoSenha ? "Salvando..." : "Salvar nova senha")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _collapsed;
+    private bool _menuUsuarioAberto;
+    private bool _temaEscuro;
+    private bool _modalTrocarSenhaAberto;
+    private bool _salvandoSenha;
+    private string? _msgErroSenha;
+    private string? _msgSucessoSenha;
+    private string _confirmacaoSenha = string.Empty;
+    private readonly ModeloTrocarSenhaModal _modeloSenhaModal = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var tema = await Js.InvokeAsync<string>("investProMaxGetTheme");
+                var ehEscuro = string.Equals(tema, "dark", StringComparison.OrdinalIgnoreCase);
+                if (_temaEscuro != ehEscuro)
+                {
+                    _temaEscuro = ehEscuro;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // Ignora caso JS interop não esteja disponível
+            }
+        }
+    }
+
+    private async Task AlternarTemaAsync()
+    {
+        _temaEscuro = !_temaEscuro;
+        var novoTema = _temaEscuro ? "dark" : "light";
+        await Js.InvokeVoidAsync("investProMaxSetTheme", novoTema);
+    }
+
+    private void AlternarMenu()
+    {
+        _collapsed = !_collapsed;
+    }
+
+    private void AlternarMenuUsuario()
+    {
+        _menuUsuarioAberto = !_menuUsuarioAberto;
+    }
+
+    private void FecharMenuUsuario()
+    {
+        _menuUsuarioAberto = false;
+    }
+
+    private void AbrirModalTrocarSenha()
+    {
+        _menuUsuarioAberto = false;
+        _msgErroSenha = null;
+        _msgSucessoSenha = null;
+        _modeloSenhaModal.SenhaAtual = string.Empty;
+        _modeloSenhaModal.NovaSenha = string.Empty;
+        _confirmacaoSenha = string.Empty;
+        _modalTrocarSenhaAberto = true;
+    }
+
+    private void FecharModalTrocarSenha()
+    {
+        _modalTrocarSenhaAberto = false;
+    }
+
+    private void IrParaMinhaConta()
+    {
+        _menuUsuarioAberto = false;
+        Navegacao.NavigateTo("/configuracoes?aba=conta");
+    }
+
+    private void IrParaGerenciarUsuarios()
+    {
+        _menuUsuarioAberto = false;
+        Navegacao.NavigateTo("/configuracoes?aba=usuarios");
+    }
+
+    private bool EhAdmin(ClaimsPrincipal user)
+    {
+        return string.Equals(AuthState.NomeUsuario, "admin", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(user.Identity?.Name, "admin", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task ExecutarTrocarSenhaAsync()
+    {
+        _msgErroSenha = null;
+        _msgSucessoSenha = null;
+
+        if (string.IsNullOrWhiteSpace(_modeloSenhaModal.NovaSenha) || _modeloSenhaModal.NovaSenha.Length < 8)
+        {
+            _msgErroSenha = "A nova senha deve ter no mínimo 8 caracteres.";
+            return;
+        }
+
+        if (_modeloSenhaModal.NovaSenha != _confirmacaoSenha)
+        {
+            _msgErroSenha = "A confirmação de senha não confere com a nova senha digitada.";
+            return;
+        }
+
+        _salvandoSenha = true;
+        try
+        {
+            await ApiClient.AlterarSenhaAsync(new AlterarSenhaRequest(_modeloSenhaModal.SenhaAtual, _modeloSenhaModal.NovaSenha));
+            _msgSucessoSenha = "Senha alterada com sucesso!";
+            _modeloSenhaModal.SenhaAtual = string.Empty;
+            _modeloSenhaModal.NovaSenha = string.Empty;
+            _confirmacaoSenha = string.Empty;
+        }
+        catch (ApiException ex)
+        {
+            _msgErroSenha = ex.Message;
+        }
+        finally
+        {
+            _salvandoSenha = false;
+        }
+    }
+
+    private static string ObterIniciais(string? nome)
+    {
+        if (string.IsNullOrWhiteSpace(nome)) return "IP";
+        var partes = nome.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (partes.Length == 1) return partes[0][..Math.Min(2, partes[0].Length)].ToUpperInvariant();
+        return $"{partes[0][0]}{partes[^1][0]}".ToUpperInvariant();
+    }
+
+    private async Task SairAsync()
+    {
+        _menuUsuarioAberto = false;
+        await ApiClient.LogoutAsync();
+        Navegacao.NavigateTo("/login", forceLoad: false);
+    }
+
+    private sealed class ModeloTrocarSenhaModal
+    {
+        [Required(ErrorMessage = "A senha atual é obrigatória.")]
+        public string SenhaAtual { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "A nova senha é obrigatória.")]
+        [MinLength(8, ErrorMessage = "A nova senha deve ter no mínimo 8 caracteres.")]
+        public string NovaSenha { get; set; } = string.Empty;
+    }
+}

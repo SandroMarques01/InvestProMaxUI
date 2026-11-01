@@ -1,0 +1,9 @@
+@inject NavigationManager Navegacao
+
+@code {
+    protected override void OnInitialized()
+    {
+        var urlRetorno = Uri.EscapeDataString(Navegacao.ToBaseRelativePath(Navegacao.Uri));
+        Navegacao.NavigateTo($"/login?retorno={urlRetorno}", forceLoad: false);
+    }
+}

@@ -1,0 +1,253 @@
+@page "/segmentos"
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+<header class="page-header">
+    <div>
+        <div class="breadcrumb">InvestProMax <Icon Name="chevron" Size="12" /> Classificação setorial</div>
+        <h1>Segmentos</h1>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn-primary" @onclick="Novo">
+            <Icon Name="plus" Size="16" /><span>Novo segmento</span>
+        </button>
+    </div>
+</header>
+
+@if (_mensagemErro is not null)
+{
+    <div class="alerta-erro">@_mensagemErro</div>
+}
+@if (_mensagemSucesso is not null)
+{
+    <div class="alerta-sucesso">@_mensagemSucesso</div>
+}
+
+@if (_mensagemErro is not null && _pagina is null)
+{
+    <div class="card state-card">
+        <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+            <Icon Name="alert" Size="28" />
+        </div>
+        <h2>Não foi possível carregar os segmentos</h2>
+        <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+        <button type="button" class="btn btn-primary" @onclick="CarregarAsync">
+            <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+        </button>
+    </div>
+}
+else if (_pagina is null)
+{
+    <LoadingState Mensagem="Carregando segmentos..." Subtitulo="Recuperando setores e categorias cadastradas." />
+}
+else if (_pagina.Itens.Count == 0)
+{
+    <div class="card state-card">
+        <div class="empty-icon"><Icon Name="segments" Size="28" /></div>
+        <h2>Nenhum segmento encontrado</h2>
+        <p>Organize seus papéis por setor (ex: Bancos, Elétricas, Logística) ou estratégia.</p>
+        <button type="button" class="btn btn-primary" @onclick="Novo">
+            <Icon Name="plus" Size="16" /><span>Criar primeiro segmento</span>
+        </button>
+    </div>
+}
+else
+{
+    <div class="table-shell">
+        <table>
+            <thead>
+                <tr>
+                    <th>Nome do segmento</th>
+                    <th>Descrição</th>
+                    <th class="alinhar-centro">Status</th>
+                    <th class="alinhar-direita">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var segmento in _pagina.Itens)
+                {
+                    <tr>
+                        <td><strong>@segmento.Nome</strong></td>
+                        <td style="color:var(--muted);max-width:320px;overflow:hidden;text-overflow:ellipsis;">
+                            @(string.IsNullOrWhiteSpace(segmento.Descricao) ? "–" : segmento.Descricao)
+                        </td>
+                        <td class="alinhar-centro">
+                            <span class="badge @(segmento.Ativo ? "badge-positive" : "badge-neutral")">
+                                @(segmento.Ativo ? "Ativo" : "Inativo")
+                            </span>
+                        </td>
+                        <td class="alinhar-direita">
+                            <div class="row-actions">
+                                <button type="button" title="Editar" @onclick="() => Editar(segmento)"><Icon Name="edit" Size="14" /></button>
+                                <button type="button" class="danger" title="Remover" @onclick="() => RemoverAsync(segmento)"><Icon Name="trash" Size="14" /></button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="table-footer">
+            <span>Total de @_pagina.Itens.Count segmentos cadastrados</span>
+        </div>
+    </div>
+}
+
+<!-- Drawer: Novo / Editar Segmento -->
+@if (_modelo is not null)
+{
+    <div class="overlay">
+        <button type="button" class="overlay-close" @onclick="Cancelar"></button>
+        <div class="drawer">
+            <div class="drawer-head">
+                <div>
+                    <span>Cadastro de setor</span>
+                    <h2>@(_editandoId is null ? "Novo segmento" : "Editar segmento")</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="Cancelar"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modelo" OnValidSubmit="SalvarAsync" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+                <DataAnnotationsValidator />
+                
+                <div class="drawer-body">
+                    <div class="field">
+                        <span>Nome do segmento</span>
+                        <InputText @bind-Value="_modelo.Nome" placeholder="Ex: Financeiro, Energia, Shoppings..." />
+                        <ValidationMessage For="@(() => _modelo.Nome)" />
+                    </div>
+
+                    <div class="field">
+                        <span>Descrição (opcional)</span>
+                        <InputTextArea @bind-Value="_modelo.Descricao" placeholder="Observações sobre a categoria setorial..." />
+                    </div>
+
+                    @if (_editandoId is not null)
+                    {
+                        <div class="field" style="margin-top: 6px;">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" checked="@_modelo.Ativo" @onchange="e => _modelo.Ativo = e.Value is bool m && m" />
+                                <span>Segmento ativo</span>
+                            </label>
+                        </div>
+                    }
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="Cancelar">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                        @(_salvando ? "Salvando..." : "Salvar segmento")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private PaginaResultado<SegmentoResponse>? _pagina;
+    private string? _mensagemErro;
+    private string? _mensagemSucesso;
+    private bool _salvando;
+    private ModeloSegmentoForm? _modelo;
+    private Guid? _editandoId;
+
+    protected override async Task OnInitializedAsync() => await CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        _mensagemErro = null;
+        try
+        {
+            _pagina = await ApiClient.ListarSegmentosAsync(page: 1, pageSize: 100);
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private void Novo()
+    {
+        _editandoId = null;
+        _modelo = new ModeloSegmentoForm();
+    }
+
+    private void Editar(SegmentoResponse s)
+    {
+        _editandoId = s.Id;
+        _modelo = new ModeloSegmentoForm
+        {
+            Nome = s.Nome,
+            Descricao = s.Descricao,
+            Ativo = s.Ativo
+        };
+    }
+
+    private void Cancelar()
+    {
+        _modelo = null;
+        _editandoId = null;
+    }
+
+    private async Task SalvarAsync()
+    {
+        if (_modelo is null) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            if (_editandoId is null)
+            {
+                await ApiClient.CriarSegmentoAsync(new CriarSegmentoRequest(_modelo.Nome, _modelo.Descricao));
+                _mensagemSucesso = "Segmento criado com sucesso!";
+            }
+            else
+            {
+                await ApiClient.AtualizarSegmentoAsync(_editandoId.Value, new AtualizarSegmentoRequest(_modelo.Nome, _modelo.Descricao, _modelo.Ativo));
+                _mensagemSucesso = "Segmento atualizado com sucesso!";
+            }
+            _modelo = null;
+            _editandoId = null;
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private async Task RemoverAsync(SegmentoResponse s)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.RemoverSegmentoAsync(s.Id);
+            _mensagemSucesso = $"Segmento {s.Nome} removido com sucesso.";
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private sealed class ModeloSegmentoForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe o nome.")]
+        public string Nome { get; set; } = string.Empty;
+
+        public string? Descricao { get; set; }
+
+        public bool Ativo { get; set; } = true;
+    }
+}

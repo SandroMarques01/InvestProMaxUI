@@ -1,0 +1,379 @@
+@page "/inventario"
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+<header class="page-header">
+    <div>
+        <div class="breadcrumb">InvestProMax <Icon Name="chevron" Size="12" /> Fechamento patrimonial</div>
+        <h1>Inventário mensal</h1>
+    </div>
+    <div class="page-actions">
+        <a href="evolucao-patrimonial" class="btn btn-secondary">
+            <Icon Name="evolution" Size="16" /><span>Evolução anual</span>
+        </a>
+        <button type="button" class="btn btn-secondary" @onclick="CopiarMesAnteriorAsync" disabled="@(_copiando || _salvando)">
+            <Icon Name="copy" Size="16" /><span>@(_copiando ? "Copiando..." : "Copiar mês anterior")</span>
+        </button>
+        <button type="button" class="btn btn-primary" @onclick="SalvarLoteAsync" disabled="@_salvando">
+            <Icon Name="upload" Size="16" /><span>@(_salvando ? "Salvando..." : "Salvar lançamentos")</span>
+        </button>
+    </div>
+</header>
+
+@if (_mensagemErro is not null)
+{
+    <div class="alerta-erro">@_mensagemErro</div>
+}
+@if (_mensagemSucesso is not null)
+{
+    <div class="alerta-sucesso">@_mensagemSucesso</div>
+}
+
+<div class="competence-bar">
+    <div class="competence-group">
+        <span class="competence-tag">
+            <Icon Name="calendar" Size="16" />
+            <span>Competência:</span>
+        </span>
+        <div class="competence-field">
+            <label for="ano-input">Ano</label>
+            <input id="ano-input" type="number" style="width: 80px;" @bind="_ano" @bind:after="CarregarCompetenciaAsync" />
+        </div>
+        <div class="competence-field">
+            <label for="mes-select">Mês</label>
+            <select id="mes-select" style="width: 140px;" @bind="_mes" @bind:after="CarregarCompetenciaAsync">
+                @for (int m = 1; m <= 12; m++)
+                {
+                    <option value="@m">@($"{m:00} - {NomeMes(m)}")</option>
+                }
+            </select>
+        </div>
+    </div>
+    @if (_linhas is not null && _linhas.Count > 0)
+    {
+        var totalSugerido = _linhas.Where(l => l.Incluido).Sum(l => l.Valor);
+        <div class="competence-total">
+            <span class="label-total">Total selecionado:</span>
+            <strong>@totalSugerido.ToString("C2")</strong>
+        </div>
+    }
+</div>
+
+@if (_mensagemErro is not null && _linhas is null)
+{
+    <div class="card state-card">
+        <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+            <Icon Name="alert" Size="28" />
+        </div>
+        <h2>Não foi possível carregar o inventário</h2>
+        <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+        <button type="button" class="btn btn-primary" @onclick="CarregarCompetenciaAsync">
+            <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+        </button>
+    </div>
+}
+else if (_linhas is null)
+{
+    <LoadingState Mensagem="Carregando ativos e sugestões de inventário..." Subtitulo="Aguarde enquanto calculamos as posições da competência." />
+}
+else if (_linhas.Count == 0)
+{
+    <div class="card state-card">
+        <div class="empty-icon"><Icon Name="assets" Size="28" /></div>
+        <h2>Nenhum ativo cadastrado</h2>
+        <p>Cadastre seus ativos em "Ativos" antes de lançar o inventário mensal.</p>
+        <a href="ativos" class="btn btn-primary"><Icon Name="plus" Size="16" /><span>Ir para Ativos</span></a>
+    </div>
+}
+else
+{
+    <div class="table-shell table-compact" style="margin-bottom: 24px;">
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-incluir alinhar-centro">Incluir</th>
+                    <th class="col-ativo alinhar-esquerda">Ativo</th>
+                    <th class="col-tipo alinhar-centro">Tipo</th>
+                    <th class="col-valor alinhar-direita">Valor (R$)</th>
+                    <th class="col-descricao alinhar-esquerda">Observação / Descrição</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var linha in _linhas)
+                {
+                    <tr>
+                        <td class="col-incluir alinhar-centro">
+                            <input type="checkbox" checked="@linha.Incluido" @onchange="e => linha.Incluido = e.Value is bool m && m" style="cursor:pointer;" />
+                        </td>
+                        <td class="col-ativo alinhar-esquerda">
+                            <div class="ativo-meta-compact">
+                                <strong>@linha.AtivoNome</strong>
+                                @if (linha.Origem == TipoOrigemAtivo.Calculado)
+                                {
+                                    <span class="badge badge-positive" style="font-size: 8px;">Sugestão carteira</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-neutral" style="font-size: 8px;">Manual</span>
+                                }
+                            </div>
+                            @if (linha.Origem == TipoOrigemAtivo.Calculado && linha.QuantidadeTotal > 0)
+                            {
+                                <div class="ativo-sub-info">
+                                    @linha.QuantidadeTotal.ToString("N2") em carteira
+                                    @if (linha.QuantidadeEmAluguel > 0)
+                                    {
+                                        <span> (@linha.QuantidadeEmAluguel.ToString("N2") em aluguel, incluídas)</span>
+                                    }
+                                </div>
+                            }
+                        </td>
+                        <td class="col-tipo alinhar-centro">
+                            <span class="badge badge-info">@linha.TipoAtivo</span>
+                        </td>
+                        <td class="col-valor alinhar-direita">
+                            <input type="number" step="0.01" class="cell-input-valor" @bind="linha.Valor" @bind:after="() => linha.ArredondarValor()" />
+                        </td>
+                        <td class="col-descricao alinhar-esquerda">
+                            <input type="text" class="cell-input-desc" placeholder="Opcional..." @bind="linha.Descricao" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="table-footer">
+            <span>@_linhas.Count(l => l.Incluido) de @_linhas.Count ativos marcados para gravação</span>
+            <button type="button" class="btn btn-primary" @onclick="SalvarLoteAsync" disabled="@_salvando">
+                <Icon Name="upload" Size="14" />
+                <span>@(_salvando ? "Salvando..." : "Salvar lançamentos da competência")</span>
+            </button>
+        </div>
+    </div>
+}
+
+<div class="section-title" style="margin-top: 24px;">
+    <div>
+        <h2>Histórico gravado na competência @(_mes.ToString("D2"))/@_ano</h2>
+        <p>Valores consolidados no banco de dados para esta data</p>
+    </div>
+</div>
+
+@if (_historico is not null)
+{
+    @if (_historico.Count == 0)
+    {
+        <div class="card state-card" style="min-height: 180px;">
+            <p style="margin: 0; color: var(--muted);">Nenhum lançamento gravado para @(_mes.ToString("D2"))/@_ano.</p>
+        </div>
+    }
+    else
+    {
+        var totalHistorico = _historico.Sum(h => h.Valor);
+        <div class="table-shell table-compact">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-ativo alinhar-esquerda">Ativo</th>
+                        <th class="col-valor alinhar-direita">Valor gravado</th>
+                        <th class="col-tipo alinhar-centro">Data do registro</th>
+                        <th class="col-descricao alinhar-esquerda">Descrição</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _historico)
+                    {
+                        <tr>
+                            <td class="col-ativo alinhar-esquerda"><strong>@NomeAtivo(item.AtivoId)</strong></td>
+                            <td class="col-valor alinhar-direita positive font-bold">@item.Valor.ToString("C2")</td>
+                            <td class="col-tipo alinhar-centro">@item.Data.ToString("dd/MM/yyyy")</td>
+                            <td class="col-descricao alinhar-esquerda" style="color: var(--muted);">@item.Descricao</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td class="alinhar-esquerda">Total gravado</td>
+                        <td class="alinhar-direita positive">@totalHistorico.ToString("C2")</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private int _ano = DateTime.Today.Year;
+    private int _mes = DateTime.Today.Month;
+    private List<LinhaEdicaoInventario>? _linhas;
+    private IReadOnlyList<InventarioResponse>? _historico;
+    private IReadOnlyList<AtivoResponse>? _ativos;
+    private string? _mensagemErro;
+    private string? _mensagemSucesso;
+    private bool _salvando;
+    private bool _copiando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarCompetenciaAsync();
+    }
+
+    private async Task CarregarCompetenciaAsync()
+    {
+        _mensagemErro = null;
+        try
+        {
+            var r = await ApiClient.ListarAtivosAsync(page: 1, pageSize: 100);
+            _ativos = r.Itens;
+
+            var sugestoes = await ApiClient.ObterSugestaoCalculadaAsync(_ano, _mes);
+            var invResp = await ApiClient.ListarInventarioAsync(ano: _ano, mes: _mes, page: 1, pageSize: 100);
+            _historico = invResp.Itens;
+
+            _linhas = _ativos
+                .Where(a => a.StatusAtivo)
+                .Select(a =>
+                {
+                    var s = sugestoes.Itens.FirstOrDefault(x => x.AtivoId == a.Id);
+                    var gravado = _historico.FirstOrDefault(h => h.AtivoId == a.Id);
+                    var valorBruto = gravado?.Valor ?? s?.ValorSugerido ?? 0m;
+                    return new LinhaEdicaoInventario
+                    {
+                        AtivoId = a.Id,
+                        AtivoNome = a.Nome,
+                        TipoAtivo = a.TipoAtivo,
+                        Origem = a.TipoOrigem,
+                        Valor = Math.Round(valorBruto, 2, MidpointRounding.AwayFromZero),
+                        Descricao = gravado?.Descricao ?? (a.TipoOrigem == TipoOrigemAtivo.Calculado ? "Calculado automaticamente da carteira" : null),
+                        Incluido = true,
+                        QuantidadeTotal = s?.QuantidadeTotal ?? 0m,
+                        QuantidadeEmAluguel = s?.QuantidadeEmAluguel ?? 0m
+                    };
+                }).ToList();
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private async Task CopiarMesAnteriorAsync()
+    {
+        if (_linhas is null) return;
+        _copiando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            var anoAnterior = _mes == 1 ? _ano - 1 : _ano;
+            var mesAnterior = _mes == 1 ? 12 : _mes - 1;
+
+            var invAnterior = await ApiClient.ListarInventarioAsync(ano: anoAnterior, mes: mesAnterior, page: 1, pageSize: 100);
+            if (invAnterior.Itens.Count == 0)
+            {
+                _mensagemErro = $"Não há lançamentos gravados na competência anterior ({mesAnterior:00}/{anoAnterior}) para copiar.";
+                return;
+            }
+
+            var porAtivo = invAnterior.Itens.ToDictionary(i => i.AtivoId);
+            var copiados = 0;
+
+            foreach (var linha in _linhas.Where(l => l.Origem == TipoOrigemAtivo.Manual))
+            {
+                if (porAtivo.TryGetValue(linha.AtivoId, out var anterior))
+                {
+                    linha.Valor = Math.Round(anterior.Valor, 2, MidpointRounding.AwayFromZero);
+                    if (!string.IsNullOrWhiteSpace(anterior.Descricao))
+                    {
+                        linha.Descricao = anterior.Descricao;
+                    }
+                    linha.Incluido = true;
+                    copiados++;
+                }
+            }
+
+            if (copiados == 0)
+            {
+                _mensagemErro = $"Nenhum ativo manual correspondente foi encontrado na competência anterior ({mesAnterior:00}/{anoAnterior}).";
+            }
+            else
+            {
+                _mensagemSucesso = $"{copiados} ativo(s) manual(is) copiado(s) da competência {mesAnterior:00}/{anoAnterior}. Clique em 'Salvar lançamentos' para gravar.";
+            }
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _copiando = false;
+        }
+    }
+
+    private string NomeAtivo(Guid ativoId) =>
+        _ativos?.FirstOrDefault(a => a.Id == ativoId)?.Nome ?? ativoId.ToString()[..8];
+
+    private static string NomeMes(int m) => m switch
+    {
+        1 => "Janeiro", 2 => "Fevereiro", 3 => "Março", 4 => "Abril",
+        5 => "Maio", 6 => "Junho", 7 => "Julho", 8 => "Agosto",
+        9 => "Setembro", 10 => "Outubro", 11 => "Novembro", 12 => "Dezembro",
+        _ => ""
+    };
+
+    private async Task SalvarLoteAsync()
+    {
+        if (_linhas is null) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            var itensParaSalvar = _linhas
+                .Where(l => l.Incluido)
+                .Select(l => new ItemLancamentoLoteRequest(l.AtivoId, Math.Round(l.Valor, 2, MidpointRounding.AwayFromZero), l.Descricao))
+                .ToList();
+
+            if (itensParaSalvar.Count == 0)
+            {
+                _mensagemErro = "Selecione ao menos um ativo para salvar.";
+                return;
+            }
+
+            var resposta = await ApiClient.LancarLoteInventarioAsync(new LancamentoLoteRequest(_ano, _mes, itensParaSalvar));
+            _mensagemSucesso = $"Inventário salvo com sucesso: {resposta.Criados} criado(s), {resposta.Atualizados} atualizado(s) para {_mes:00}/{_ano}.";
+            await CarregarCompetenciaAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private sealed class LinhaEdicaoInventario
+    {
+        public Guid AtivoId { get; set; }
+        public string AtivoNome { get; set; } = string.Empty;
+        public TipoAtivo TipoAtivo { get; set; }
+        public TipoOrigemAtivo Origem { get; set; }
+        public decimal Valor { get; set; }
+        public string? Descricao { get; set; }
+        public bool Incluido { get; set; } = true;
+        public decimal QuantidadeTotal { get; set; }
+        public decimal QuantidadeEmAluguel { get; set; }
+
+        public void ArredondarValor()
+        {
+            Valor = Math.Round(Valor, 2, MidpointRounding.AwayFromZero);
+        }
+    }
+}

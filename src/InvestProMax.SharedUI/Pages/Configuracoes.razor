@@ -1,0 +1,902 @@
+@page "/configuracoes"
+@inject IInvestProMaxApiClient ApiClient
+@inject AuthState AuthState
+@inject IJSRuntime Js
+@inject NavigationManager Navegacao
+
+<header class="page-header">
+    <div>
+        <div class="breadcrumb">InvestProMax <Icon Name="chevron" Size="12" /> Sistema</div>
+        <h1>Configurações</h1>
+    </div>
+</header>
+
+<div class="subnav">
+    <button type="button" class="@(_abaAtiva == "importacao" ? "active" : "")" @onclick="@(() => _abaAtiva = "importacao")">
+        Importação e backup
+    </button>
+    <button type="button" class="@(_abaAtiva == "conta" ? "active" : "")" @onclick="@(() => _abaAtiva = "conta")">
+        Minha conta
+    </button>
+    @if (EhAdmin)
+    {
+        <button type="button" class="@(_abaAtiva == "usuarios" ? "active" : "")" @onclick="@(() => _abaAtiva = "usuarios")">
+            Usuários
+        </button>
+    }
+    <button type="button" class="@(_abaAtiva == "ambiente" ? "active" : "")" @onclick="AbrirAbaAmbienteAsync">
+        Ambiente e Conexões
+    </button>
+</div>
+
+@if (_mensagemErro is not null)
+{
+    <div class="alerta-erro">@_mensagemErro</div>
+}
+@if (_mensagemSucesso is not null)
+{
+    <div class="alerta-sucesso">@_mensagemSucesso</div>
+}
+
+@if (_abaAtiva == "importacao")
+{
+    <!-- Upload Cards Grid -->
+    <div class="upload-grid">
+        <label class="card upload-card" style="cursor: pointer; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+            <div class="upload-icon"><Icon Name="upload" Size="22" /></div>
+            <h2>Extrato B3 (.xlsx)</h2>
+            <p>Transações, dividendos e aluguéis</p>
+            <div style="margin-top: 14px;">
+                <span class="btn btn-secondary" style="font-size: 11px; pointer-events: none;">
+                    @(_processando ? "Processando..." : "Selecionar planilha")
+                </span>
+            </div>
+            <InputFile OnChange="e => ImportarAsync(e, ApiClient.ImportarB3Async)" disabled="@_processando" style="position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;" />
+        </label>
+
+        <label class="card upload-card" style="cursor: pointer; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+            <div class="upload-icon"><Icon Name="stocks" Size="22" /></div>
+            <h2>Cotações (.xlsx)</h2>
+            <p>Cotações históricas e fechamento</p>
+            <div style="margin-top: 14px;">
+                <span class="btn btn-secondary" style="font-size: 11px; pointer-events: none;">
+                    @(_processando ? "Processando..." : "Selecionar planilha")
+                </span>
+            </div>
+            <InputFile OnChange="e => ImportarAsync(e, ApiClient.ImportarCotacoesAsync)" disabled="@_processando" style="position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;" />
+        </label>
+
+        <label class="card upload-card" style="cursor: pointer; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+            <div class="upload-icon"><Icon Name="refresh" Size="22" /></div>
+            <h2>Restaurar backup (.xlsx)</h2>
+            <p>Restaura carteira a partir de arquivo de backup</p>
+            <div style="margin-top: 14px;">
+                <span class="btn btn-secondary" style="font-size: 11px; pointer-events: none;">
+                    @(_processando ? "Processando..." : "Selecionar backup")
+                </span>
+            </div>
+            <InputFile OnChange="RestaurarBackupAsync" disabled="@_processando" style="position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;" />
+        </label>
+    </div>
+
+    <!-- Import Summary Widgets -->
+    @if (_ultimoResultadoB3 is not null)
+    {
+        <section class="card import-summary">
+            <div class="section-title">
+                <div>
+                    <h2>Resumo da importação B3</h2>
+                    <p>Métricas extraídas e processadas da planilha do extrato</p>
+                </div>
+                <span class="badge badge-positive">Sucesso</span>
+            </div>
+            <div>
+                <span>
+                    <small>PAPÉIS CRIADOS</small>
+                    <strong>@_ultimoResultadoB3.PapeisCriados</strong>
+                </span>
+                <span>
+                    <small>TRANSAÇÕES</small>
+                    <strong>@_ultimoResultadoB3.TransacoesCriadas</strong>
+                </span>
+                <span>
+                    <small>DIVIDENDOS</small>
+                    <strong>@_ultimoResultadoB3.DividendosCriados</strong>
+                </span>
+                <span>
+                    <small>ALUGUÉIS</small>
+                    <strong>@_ultimoResultadoB3.MovimentosAluguelCriados</strong>
+                </span>
+                <span>
+                    <small>DUPLICADAS (IGNORADAS)</small>
+                    <strong>@_ultimoResultadoB3.LinhasIgnoradasDuplicadas</strong>
+                </span>
+                <span>
+                    <small>NÃO RECONHECIDAS</small>
+                    <strong>@_ultimoResultadoB3.LinhasIgnoradasNaoReconhecidas</strong>
+                </span>
+            </div>
+        </section>
+    }
+    else if (_ultimoResultadoCotacoes is not null)
+    {
+        <section class="card import-summary">
+            <div class="section-title">
+                <div>
+                    <h2>Resumo da importação de cotações</h2>
+                    <p>Atualização de cotações a partir da planilha</p>
+                </div>
+                <span class="badge badge-positive">Sucesso</span>
+            </div>
+            <div style="grid-template-columns: repeat(2, 1fr);">
+                <span>
+                    <small>COTAÇÕES ATUALIZADAS</small>
+                    <strong>@_ultimoResultadoCotacoes.CotacoesAtualizadas</strong>
+                </span>
+                <span>
+                    <small>NÃO ENCONTRADOS</small>
+                    <strong>@_ultimoResultadoCotacoes.CodigosNaoEncontrados.Count</strong>
+                </span>
+            </div>
+        </section>
+    }
+    else if (_ultimoResultadoRestauracao is not null)
+    {
+        <section class="card import-summary">
+            <div class="section-title">
+                <div>
+                    <h2>Resumo da restauração de backup</h2>
+                    <p>Registros importados e mesclados com a base de dados</p>
+                </div>
+                <span class="badge badge-positive">Sucesso</span>
+            </div>
+            <div>
+                <span>
+                    <small>PAPÉIS (+ / UPD)</small>
+                    <strong>@_ultimoResultadoRestauracao.PapeisCriados / @_ultimoResultadoRestauracao.PapeisAtualizados</strong>
+                </span>
+                <span>
+                    <small>TRANSAÇÕES (+ / UPD)</small>
+                    <strong>@_ultimoResultadoRestauracao.TransacoesCriadas / @_ultimoResultadoRestauracao.TransacoesAtualizadas</strong>
+                </span>
+                <span>
+                    <small>DIVIDENDOS (+ / UPD)</small>
+                    <strong>@_ultimoResultadoRestauracao.DividendosCriados / @_ultimoResultadoRestauracao.DividendosAtualizados</strong>
+                </span>
+                <span>
+                    <small>ALUGUÉIS (+ / UPD)</small>
+                    <strong>@_ultimoResultadoRestauracao.AlugueisCriados / @_ultimoResultadoRestauracao.AlugueisAtualizados</strong>
+                </span>
+            </div>
+        </section>
+    }
+
+    <!-- Excel Backup Banner -->
+    <div class="backup-row">
+        <div>
+            <h2>Backup completo da carteira (.xlsx)</h2>
+            <p>Baixe um arquivo Excel contendo todas as tabelas e dados para segurança ou migração externa.</p>
+        </div>
+        <button type="button" class="btn btn-secondary" @onclick="BaixarBackupAsync" disabled="@_processando" style="white-space: nowrap;">
+            <Icon Name="upload" Size="16" />
+            <span>@(_processando ? "Gerando backup..." : "Baixar backup (.xlsx)")</span>
+        </button>
+    </div>
+
+    <!-- MongoDB Atlas Backup Banner -->
+    <div class="backup-row" style="margin-top: 14px; border-left: 3px solid #10b981;">
+        <div>
+            <h2>Backup em Nuvem no MongoDB Atlas</h2>
+            <p>Sincroniza todas as tabelas na nuvem (MongoDB Atlas) com coleções prefixadas como <code>IPM_Nome_Tabela</code>.</p>
+        </div>
+        <button type="button" class="btn btn-primary" @onclick="ExecutarBackupMongoAsync" disabled="@_processando" style="white-space: nowrap;">
+            <Icon Name="refresh" Size="16" />
+            <span>@(_processandoMongo ? "Sincronizando MongoDB..." : "Fazer backup no MongoDB agora")</span>
+        </button>
+    </div>
+
+    @if (_ultimoResultadoMongo is not null)
+    {
+        <section class="card import-summary" style="margin-top: 14px;">
+            <div class="section-title">
+                <div>
+                    <h2>Resumo do backup no MongoDB Atlas</h2>
+                    <p>@_ultimoResultadoMongo.Mensagem</p>
+                </div>
+                <span class="badge @(_ultimoResultadoMongo.Sucesso ? "badge-positive" : "badge-negative")">
+                    @(_ultimoResultadoMongo.Sucesso ? "Concluído" : "Erro")
+                </span>
+            </div>
+            <div>
+                @foreach (var tab in _ultimoResultadoMongo.Tabelas.Where(t => t.TotalRegistros > 0))
+                {
+                    <span>
+                        <small>@tab.NomeColecao</small>
+                        <strong>@tab.TotalRegistros</strong>
+                    </span>
+                }
+                <span>
+                    <small>TOTAL GERAL</small>
+                    <strong>@_ultimoResultadoMongo.TotalGeralRegistros docs</strong>
+                </span>
+            </div>
+        </section>
+    }
+
+    <!-- Danger Zone Card -->
+    <section class="card danger-zone">
+        <div class="section-title">
+            <div>
+                <h2 style="color: var(--danger);">Zona de risco</h2>
+                <p>Ações irreversíveis sobre a base de dados. Proceda com cautela.</p>
+            </div>
+            <span class="badge badge-negative">Atenção</span>
+        </div>
+
+        <div>
+            <span>
+                <strong>Zerar só a carteira de ações</strong>
+                <small>Isso apaga papéis, transações, dividendos e aluguéis. Ativos gerais, inventário, contas e faturas permanecem intactos.</small>
+            </span>
+            @if (!_confirmandoZerarCarteira)
+            {
+                <button type="button" class="btn btn-danger" @onclick="() => _confirmandoZerarCarteira = true" disabled="@_processando">
+                    Zerar carteira
+                </button>
+            }
+            else
+            {
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" class="btn btn-danger" @onclick="ZerarCarteiraAsync" disabled="@_processando">
+                        Sim, apagar carteira
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="() => _confirmandoZerarCarteira = false" disabled="@_processando">
+                        Cancelar
+                    </button>
+                </div>
+            }
+        </div>
+
+        <div>
+            <span>
+                <strong>Zerar toda a base de dados</strong>
+                <small>Apaga <strong>todos</strong> os papéis, transações, dividendos, segmentos, ativos, inventário, contas e faturas. Não pode ser desfeito.</small>
+            </span>
+            @if (!_confirmandoZerarBase)
+            {
+                <button type="button" class="btn btn-danger" @onclick="() => _confirmandoZerarBase = true" disabled="@_processando">
+                    Zerar toda a base
+                </button>
+            }
+            else
+            {
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" class="btn btn-danger" @onclick="ZerarBaseAsync" disabled="@_processando">
+                        Sim, apagar tudo
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="() => _confirmandoZerarBase = false" disabled="@_processando">
+                        Cancelar
+                    </button>
+                </div>
+            }
+        </div>
+    </section>
+}
+else if (_abaAtiva == "conta")
+{
+    <section class="card settings-form">
+        <div class="section-title">
+            <div>
+                <h2>Alterar senha</h2>
+                <p>Atualize suas credenciais de acesso ao InvestProMax</p>
+            </div>
+        </div>
+
+        <EditForm Model="_modeloSenha" OnValidSubmit="AlterarSenhaAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div style="display: flex; flex-direction: column; gap: 14px; max-width: 440px;">
+                <label class="field">
+                    <span>Senha atual</span>
+                    <InputText type="password" @bind-Value="_modeloSenha.SenhaAtual" placeholder="••••••••" />
+                </label>
+
+                <label class="field">
+                    <span>Nova senha</span>
+                    <InputText type="password" @bind-Value="_modeloSenha.NovaSenha" placeholder="Mínimo 8 caracteres" />
+                </label>
+
+                <div style="margin-top: 6px;">
+                    <button type="submit" class="btn btn-primary" disabled="@_processando">
+                        @(_processando ? "Salvando..." : "Salvar nova senha")
+                    </button>
+                </div>
+            </div>
+        </EditForm>
+    </section>
+}
+else if (_abaAtiva == "usuarios" && EhAdmin)
+{
+    <section class="card settings-form">
+        <div class="section-title">
+            <div>
+                <h2>Criar novo usuário</h2>
+                <p>Cadastre novos usuários com acesso ao sistema</p>
+            </div>
+        </div>
+
+        <EditForm Model="_modeloCriarUsuario" OnValidSubmit="CriarUsuarioAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="form-grid" style="max-width: 580px;">
+                <label class="field full">
+                    <span>Nome completo</span>
+                    <InputText @bind-Value="_modeloCriarUsuario.Nome" placeholder="Ex: Maria da Silva" />
+                </label>
+
+                <label class="field">
+                    <span>E-mail</span>
+                    <InputText type="email" @bind-Value="_modeloCriarUsuario.Email" placeholder="maria@exemplo.com" />
+                </label>
+
+                <label class="field">
+                    <span>Nome de usuário</span>
+                    <InputText @bind-Value="_modeloCriarUsuario.NomeUsuario" placeholder="maria.silva" />
+                </label>
+
+                <label class="field full">
+                    <span>Senha inicial</span>
+                    <InputText type="password" @bind-Value="_modeloCriarUsuario.Senha" placeholder="Mínimo 8 caracteres" />
+                </label>
+
+                <div class="full" style="margin-top: 6px;">
+                    <button type="submit" class="btn btn-primary" disabled="@_processando">
+                        @(_processando ? "Criando..." : "Criar usuário")
+                    </button>
+                </div>
+            </div>
+        </EditForm>
+    </section>
+}
+else if (_abaAtiva == "ambiente")
+{
+    <section class="card settings-form">
+        <div class="section-title">
+            <div>
+                <h2>Diagnóstico de Ambiente e Conexões</h2>
+                <p>Verificação das URLs da aplicação, da API e do banco de dados em uso</p>
+            </div>
+            <button type="button" class="btn btn-secondary" @onclick="CarregarInfoAmbienteAsync" disabled="@_carregandoAmbiente">
+                <Icon Name="refresh" Size="14" />
+                @(_carregandoAmbiente ? "Atualizando..." : "Atualizar diagnóstico")
+            </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 14px;">
+            <!-- Card 1: URL Atual (Frontend) -->
+            <div class="card" style="padding: 18px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: rgba(59, 130, 246, 0.12); color: #3b82f6;">
+                            <Icon Name="dashboard" Size="18" />
+                        </span>
+                        <div>
+                            <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Aplicação (Frontend)</h3>
+                            <small style="color: var(--muted);">Interface Web / Cliente</small>
+                        </div>
+                    </div>
+                    <span class="badge badge-positive" style="font-size: 11px;">Ativa</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                    <div>
+                        <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">URL Atual</small>
+                        <code style="display: block; padding: 6px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); word-break: break-all; font-size: 12px; margin-top: 4px;">
+                            @Navegacao.Uri
+                        </code>
+                    </div>
+                    <div>
+                        <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">URL Base (Base URI)</small>
+                        <code style="display: block; padding: 6px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); word-break: break-all; font-size: 12px; margin-top: 4px;">
+                            @Navegacao.BaseUri
+                        </code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: URL da API (Backend) -->
+            <div class="card" style="padding: 18px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: rgba(16, 185, 129, 0.12); color: #10b981;">
+                            <Icon Name="settings" Size="18" />
+                        </span>
+                        <div>
+                            <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Servidor API (Backend)</h3>
+                            <small style="color: var(--muted);">API REST .NET</small>
+                        </div>
+                    </div>
+                    @if (_infoAmbiente?.Conectado == true)
+                    {
+                        <span class="badge badge-positive" style="font-size: 11px;">Online</span>
+                    }
+                    else if (_carregandoAmbiente)
+                    {
+                        <span class="badge badge-neutral" style="font-size: 11px;">Verificando...</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-negative" style="font-size: 11px;">Indisponível</span>
+                    }
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                    <div>
+                        <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">URL da API</small>
+                        <code style="display: block; padding: 6px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); word-break: break-all; font-size: 12px; margin-top: 4px;">
+                            @ApiClient.UrlApi
+                        </code>
+                    </div>
+                    <div>
+                        <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">Ambiente da API</small>
+                        <span style="font-weight: 600; margin-top: 4px; display: block;">
+                            @(_infoAmbiente?.Ambiente ?? "Detectando...")
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: Banco de Dados -->
+            <div class="card" style="padding: 18px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: rgba(139, 92, 246, 0.12); color: #8b5cf6;">
+                            <Icon Name="assets" Size="18" />
+                        </span>
+                        <div>
+                            <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Banco de Dados Usado</h3>
+                            <small style="color: var(--muted);">Persistência Principal</small>
+                        </div>
+                    </div>
+                    @if (_infoAmbiente?.Conectado == true)
+                    {
+                        <span class="badge badge-positive" style="font-size: 11px;">Conectado</span>
+                    }
+                    else if (_carregandoAmbiente)
+                    {
+                        <span class="badge badge-neutral" style="font-size: 11px;">Testando...</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-negative" style="font-size: 11px;">Desconectado</span>
+                    }
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                    <div>
+                        <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">Provedor do Banco</small>
+                        <span style="font-weight: 600; color: #8b5cf6; display: block; margin-top: 4px;">
+                            @(_infoAmbiente?.ProvedorBanco ?? "Consultando...")
+                        </span>
+                    </div>
+                    <div>
+                        <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">Servidor / Host</small>
+                        <code style="display: block; padding: 6px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); word-break: break-all; font-size: 12px; margin-top: 4px;">
+                            @(_infoAmbiente?.ServidorBanco ?? "Consultando...")
+                        </code>
+                    </div>
+                    <div>
+                        <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">Nome do Banco</small>
+                        <span style="font-weight: 600; margin-top: 4px; display: block;">
+                            @(_infoAmbiente?.NomeBanco ?? "postgres")
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 4: MongoDB Atlas (Backup em Nuvem) -->
+            <div class="card" style="padding: 18px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: rgba(16, 185, 129, 0.12); color: #10b981;">
+                            <Icon Name="refresh" Size="18" />
+                        </span>
+                        <div>
+                            <h3 style="font-size: 15px; font-weight: 600; margin: 0;">MongoDB Atlas</h3>
+                            <small style="color: var(--muted);">Backup em Nuvem (IPM_*)</small>
+                        </div>
+                    </div>
+                    @if (_statusMongo?.Conectado == true)
+                    {
+                        <span class="badge badge-positive" style="font-size: 11px;">Conectado</span>
+                    }
+                    else if (_carregandoAmbiente)
+                    {
+                        <span class="badge badge-neutral" style="font-size: 11px;">Testando...</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-negative" style="font-size: 11px;">Desconectado</span>
+                    }
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                    <div>
+                        <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">Cluster / Servidor</small>
+                        <code style="display: block; padding: 6px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); word-break: break-all; font-size: 12px; margin-top: 4px;">
+                            @(_statusMongo?.Servidor ?? "marquesfc.qjuhho6.mongodb.net")
+                        </code>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">Banco</small>
+                            <span style="font-weight: 600; margin-top: 4px; display: block;">
+                                @(_statusMongo?.Banco ?? "InvestProMax")
+                            </span>
+                        </div>
+                        <div style="text-align: right;">
+                            <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600;">Documentos em Nuvem</small>
+                            <span style="font-weight: 700; color: #10b981; margin-top: 4px; display: block;">
+                                @(_statusMongo?.TotalDocumentos ?? 0) docs
+                            </span>
+                        </div>
+                    </div>
+                    @if (_statusMongo?.Colecoes is { Count: > 0 } cols)
+                    {
+                        <div>
+                            <small style="color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Coleções criadas</small>
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                @foreach (var c in cols)
+                                {
+                                    <span class="badge badge-neutral" style="font-size: 9px; padding: 2px 6px;">
+                                        @c.NomeColecao (@c.TotalRegistros)
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (_infoAmbiente is not null)
+        {
+            <div style="margin-top: 18px; padding: 12px 16px; border-radius: 8px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); font-size: 13px; color: var(--ink); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <span>
+                    <strong>Diagnóstico confirmado:</strong> O InvestProMax está operando no banco <strong>@_infoAmbiente.ProvedorBanco</strong> com status <strong>@(_infoAmbiente.Conectado ? "Online" : "Falha na Conexão")</strong>.
+                </span>
+                <span style="color: var(--muted); font-size: 12px;">
+                    Sincronizado às @_infoAmbiente.DataHoraServidorUtc.ToLocalTime().ToString("HH:mm:ss")
+                </span>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "aba")]
+    public string? AbaQuery { get; set; }
+
+    private string _abaAtiva = "importacao";
+    private bool _processando;
+    private InfoAmbienteResponse? _infoAmbiente;
+    private bool _carregandoAmbiente;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarInfoAmbienteAsync();
+    }
+
+    private async Task AbrirAbaAmbienteAsync()
+    {
+        _abaAtiva = "ambiente";
+        if (_infoAmbiente is null)
+        {
+            await CarregarInfoAmbienteAsync();
+        }
+    }
+
+    private async Task CarregarInfoAmbienteAsync()
+    {
+        _carregandoAmbiente = true;
+        try
+        {
+            _infoAmbiente = await ApiClient.ObterInfoAmbienteAsync();
+            await CarregarStatusMongoAsync();
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = $"Não foi possível obter diagnóstico do ambiente: {ex.Message}";
+        }
+        finally
+        {
+            _carregandoAmbiente = false;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrWhiteSpace(AbaQuery))
+        {
+            _abaAtiva = AbaQuery;
+        }
+    }
+    private bool _confirmandoZerarBase;
+    private bool _confirmandoZerarCarteira;
+    private string? _mensagemErro;
+    private string? _mensagemSucesso;
+
+    private ImportarB3Response? _ultimoResultadoB3;
+    private ImportarCotacoesResponse? _ultimoResultadoCotacoes;
+    private RestaurarBackupResponse? _ultimoResultadoRestauracao;
+
+    private readonly ModeloSenhaForm _modeloSenha = new();
+    private readonly ModeloCriarUsuarioForm _modeloCriarUsuario = new();
+
+    private bool EhAdmin => string.Equals(AuthState.NomeUsuario, "admin", StringComparison.OrdinalIgnoreCase);
+
+    private async Task ImportarAsync<T>(InputFileChangeEventArgs e, Func<Stream, string, CancellationToken, Task<T>> importar)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        _ultimoResultadoB3 = null;
+        _ultimoResultadoCotacoes = null;
+        _ultimoResultadoRestauracao = null;
+        _processando = true;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+            using var memoria = new MemoryStream();
+            await stream.CopyToAsync(memoria);
+
+            var resultado = await importar(memoria, e.File.Name, CancellationToken.None);
+            if (resultado is ImportarB3Response b3)
+            {
+                _ultimoResultadoB3 = b3;
+                _mensagemSucesso = $"Importação concluída: {b3.PapeisCriados} papel(éis), {b3.TransacoesCriadas} transação(ões), {b3.DividendosCriados} dividendo(s), {b3.MovimentosAluguelCriados} movimento(s) de aluguel.";
+            }
+            else if (resultado is ImportarCotacoesResponse cotacoes)
+            {
+                _ultimoResultadoCotacoes = cotacoes;
+                _mensagemSucesso = $"{cotacoes.CotacoesAtualizadas} cotação(ões) atualizada(s)." +
+                    (cotacoes.CodigosNaoEncontrados.Count > 0 ? $" Não encontrados: {string.Join(", ", cotacoes.CodigosNaoEncontrados)}." : "");
+            }
+            else
+            {
+                _mensagemSucesso = "Importação concluída com sucesso.";
+            }
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private async Task BaixarBackupAsync()
+    {
+        _mensagemErro = null;
+        _processando = true;
+        try
+        {
+            var (conteudo, nomeArquivo) = await ApiClient.BaixarBackupAsync();
+            await using var stream = conteudo;
+            using var memoria = new MemoryStream();
+            await stream.CopyToAsync(memoria);
+            var base64 = Convert.ToBase64String(memoria.ToArray());
+            await Js.InvokeVoidAsync("investProMaxDownloadFile", nomeArquivo, base64);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private BackupMongoResponse? _ultimoResultadoMongo;
+    private StatusMongoResponse? _statusMongo;
+    private bool _processandoMongo;
+
+    private async Task ExecutarBackupMongoAsync()
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        _ultimoResultadoMongo = null;
+        _processando = true;
+        _processandoMongo = true;
+        try
+        {
+            _ultimoResultadoMongo = await ApiClient.ExecutarBackupMongoAsync();
+            if (_ultimoResultadoMongo.Sucesso)
+            {
+                _mensagemSucesso = _ultimoResultadoMongo.Mensagem;
+                await CarregarStatusMongoAsync();
+            }
+            else
+            {
+                _mensagemErro = _ultimoResultadoMongo.Mensagem;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = $"Falha ao executar backup no MongoDB: {ex.Message}";
+        }
+        finally
+        {
+            _processando = false;
+            _processandoMongo = false;
+        }
+    }
+
+    private async Task CarregarStatusMongoAsync()
+    {
+        try
+        {
+            _statusMongo = await ApiClient.ObterStatusMongoAsync();
+        }
+        catch
+        {
+            // Opcional, não bloqueia a tela se o serviço estiver indisponível
+        }
+    }
+
+    private async Task RestaurarBackupAsync(InputFileChangeEventArgs e)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        _ultimoResultadoB3 = null;
+        _ultimoResultadoCotacoes = null;
+        _ultimoResultadoRestauracao = null;
+        _processando = true;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+            using var memoria = new MemoryStream();
+            await stream.CopyToAsync(memoria);
+
+            var resultado = await ApiClient.RestaurarBackupAsync(memoria, e.File.Name);
+            _ultimoResultadoRestauracao = resultado;
+            _mensagemSucesso = $"Restaurado com sucesso: {resultado.PapeisCriados} papel(éis) criado(s), {resultado.PapeisAtualizados} atualizado(s); " +
+                $"{resultado.TransacoesCriadas} transação(ões) criada(s); {resultado.DividendosCriados} dividendo(s) criado(s).";
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private async Task ZerarCarteiraAsync()
+    {
+        _mensagemErro = null;
+        _processando = true;
+        try
+        {
+            await ApiClient.ZerarCarteiraAsync();
+            _mensagemSucesso = "Carteira de ações zerada com sucesso.";
+            _confirmandoZerarCarteira = false;
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private async Task ZerarBaseAsync()
+    {
+        _mensagemErro = null;
+        _processando = true;
+        try
+        {
+            await ApiClient.ZerarBaseAsync();
+            _mensagemSucesso = "Base de dados zerada com sucesso.";
+            _confirmandoZerarBase = false;
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private async Task AlterarSenhaAsync()
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        _processando = true;
+        try
+        {
+            await ApiClient.AlterarSenhaAsync(new AlterarSenhaRequest(_modeloSenha.SenhaAtual, _modeloSenha.NovaSenha));
+            _mensagemSucesso = "Senha alterada com sucesso.";
+            _modeloSenha.SenhaAtual = string.Empty;
+            _modeloSenha.NovaSenha = string.Empty;
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private async Task CriarUsuarioAsync()
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        _processando = true;
+        try
+        {
+            var request = new CriarUsuarioRequest(
+                _modeloCriarUsuario.Nome,
+                _modeloCriarUsuario.Email,
+                _modeloCriarUsuario.NomeUsuario,
+                _modeloCriarUsuario.Senha);
+
+            var usuario = await ApiClient.CriarUsuarioAsync(request);
+            _mensagemSucesso = $"Usuário '{usuario.NomeUsuario}' criado com sucesso!";
+            _modeloCriarUsuario.Nome = string.Empty;
+            _modeloCriarUsuario.Email = string.Empty;
+            _modeloCriarUsuario.NomeUsuario = string.Empty;
+            _modeloCriarUsuario.Senha = string.Empty;
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private sealed class ModeloSenhaForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe a senha atual.")]
+        public string SenhaAtual { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe a nova senha.")]
+        [System.ComponentModel.DataAnnotations.MinLength(8, ErrorMessage = "A nova senha deve ter ao menos 8 caracteres.")]
+        public string NovaSenha { get; set; } = string.Empty;
+    }
+
+    private sealed class ModeloCriarUsuarioForm
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "O nome é obrigatório.")]
+        [System.ComponentModel.DataAnnotations.MaxLength(100, ErrorMessage = "O nome não pode exceder 100 caracteres.")]
+        public string Nome { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "O e-mail é obrigatório.")]
+        [System.ComponentModel.DataAnnotations.EmailAddress(ErrorMessage = "E-mail inválido.")]
+        [System.ComponentModel.DataAnnotations.MaxLength(255, ErrorMessage = "O e-mail não pode exceder 255 caracteres.")]
+        public string Email { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "O nome de usuário é obrigatório.")]
+        [System.ComponentModel.DataAnnotations.MinLength(3, ErrorMessage = "O nome de usuário deve ter ao menos 3 caracteres.")]
+        [System.ComponentModel.DataAnnotations.MaxLength(50, ErrorMessage = "O nome de usuário não pode exceder 50 caracteres.")]
+        public string NomeUsuario { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "A senha é obrigatória.")]
+        [System.ComponentModel.DataAnnotations.MinLength(8, ErrorMessage = "A senha deve ter ao menos 8 caracteres.")]
+        public string Senha { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <!-- ASSUNÇÃO SINALIZADA: só Android e iOS/MacCatalyst por padrão (cobre celular e o
+         "MAUI" citado na seção 3); adicione net10.0-windows10.0.19041.0 aqui se quiser um
+         head Windows também — não incluído porque a especificação não pede explicitamente. -->
+    <TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>InvestProMax.Maui</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <ApplicationTitle>Invest Pro Max</ApplicationTitle>
+    <ApplicationId>com.investpromax.app</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Versão: mesmo aviso de sempre — sem SDK/rede neste ambiente pra confirmar contra o
+         NuGet/workload MAUI de verdade. -->
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InvestProMax.SharedUI\InvestProMax.SharedUI.csproj" />
+  </ItemGroup>
+
+</Project>

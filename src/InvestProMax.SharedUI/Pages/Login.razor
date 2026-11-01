@@ -1,0 +1,116 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@layout InvestProMax.SharedUI.Layout.LoginLayout
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+<main class="login-page">
+    <div class="login-aside">
+        <div class="logo">
+            <img src="_content/InvestProMax.SharedUI/images/logo.svg" alt="InvestProMax" style="height: 38px; max-width: 200px; object-fit: contain;" />
+        </div>
+        <div>
+            <span class="badge badge-positive" style="margin-bottom: 14px;">Controle financeiro inteligente</span>
+            <h1>Seu patrimônio,<br />sob controle.</h1>
+            <p>Decisões melhores começam com uma visão clara dos seus investimentos.</p>
+            <div style="margin-top: 24px; text-align: center;">
+                <img src="_content/InvestProMax.SharedUI/images/system-preview.png" alt="InvestProMax Preview" style="width: 100%; max-width: 440px; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.12);" />
+            </div>
+        </div>
+        <small>Segurança e privacidade em primeiro lugar.</small>
+    </div>
+
+    <section class="card login-card">
+        <div class="logo" style="display: flex; justify-content: center; margin-bottom: 12px;">
+            <div class="logo-mark"><span /><span /><span /></div>
+            <strong style="margin-left: 8px;">InvestPro<span style="color: var(--primary);">Max</span></strong>
+        </div>
+
+        <div>
+            <h1>Bem-vindo de volta</h1>
+            <p>Entre para acessar seu painel financeiro.</p>
+        </div>
+
+        @if (_mensagemErro is not null)
+        {
+            <div class="alerta-erro">@_mensagemErro</div>
+        }
+
+        <EditForm Model="_modelo" OnValidSubmit="EntrarAsync">
+            <DataAnnotationsValidator />
+            
+            <div class="field" style="margin-bottom: 14px;">
+                <span>Usuário ou E-mail</span>
+                <InputText id="usuario" @bind-Value="_modelo.NomeUsuario" disabled="@_carregando" placeholder="admin" />
+                <ValidationMessage For="@(() => _modelo.NomeUsuario)" />
+            </div>
+
+            <div class="field" style="margin-bottom: 16px;">
+                <span>Senha</span>
+                <InputText id="senha" type="password" @bind-Value="_modelo.Senha" disabled="@_carregando" placeholder="••••••••" />
+                <ValidationMessage For="@(() => _modelo.Senha)" />
+            </div>
+
+            <div class="login-options" style="margin-bottom: 18px;">
+                <label>
+                    <input type="checkbox" checked /> Lembrar de mim
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary full-btn" disabled="@_carregando">
+                @if (_carregando)
+                {
+                    <span>Entrando...</span>
+                }
+                else
+                {
+                    <span>Entrar</span>
+                }
+            </button>
+        </EditForm>
+
+        <small>Ao entrar, você concorda com os Termos de Uso e Privacidade.</small>
+    </section>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "retorno")]
+    private string? UrlRetorno { get; set; }
+
+    private readonly ModeloLogin _modelo = new();
+    private bool _carregando;
+    private string? _mensagemErro;
+
+    private async Task EntrarAsync()
+    {
+        _carregando = true;
+        _mensagemErro = null;
+        try
+        {
+            await ApiClient.LoginAsync(new LoginRequest(_modelo.NomeUsuario, _modelo.Senha));
+            var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
+            Navegacao.NavigateTo(destino, forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.EhNaoAutorizado ? "Usuário ou senha inválidos." : ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = "Erro ao conectar com o servidor: " + ex.Message;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private sealed class ModeloLogin
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe o usuário.")]
+        public string NomeUsuario { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe a senha.")]
+        public string Senha { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,475 @@
+@page "/dividendos"
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+<header class="page-header">
+    <div>
+        <div class="breadcrumb">InvestProMax <Icon Name="chevron" Size="12" /> Proventos da carteira</div>
+        <h1>Dividendos</h1>
+    </div>
+    <div class="page-actions">
+        <a href="configuracoes" class="btn btn-secondary">
+            <Icon Name="upload" Size="16" /><span>Importar B3</span>
+        </a>
+        <button type="button" class="btn btn-primary" @onclick="Novo">
+            <Icon Name="plus" Size="16" /><span>Novo dividendo</span>
+        </button>
+    </div>
+</header>
+
+@if (_mensagemErro is not null)
+{
+    <div class="alerta-erro">@_mensagemErro</div>
+}
+@if (_mensagemSucesso is not null)
+{
+    <div class="alerta-sucesso">@_mensagemSucesso</div>
+}
+
+<div class="filter-bar">
+    <label class="field" style="width: 190px;">
+        <span>Filtrar por papel</span>
+        <select @bind="_filtroPapelId" @bind:after="FiltrarAsync">
+            <option value="">Todos os papéis</option>
+            @if (_papeis is not null)
+            {
+                @foreach (var papel in _papeis)
+                {
+                    <option value="@papel.Id">@papel.Codigo — @papel.Nome</option>
+                }
+            }
+        </select>
+    </label>
+
+    <label class="field" style="width: 140px;">
+        <span>Tipo de papel</span>
+        <select @bind="_filtroTipoPapel" @bind:after="FiltrarAsync">
+            <option value="">Todos os tipos</option>
+            @foreach (var tipo in Enum.GetValues<TipoPapel>())
+            {
+                <option value="@tipo">@tipo</option>
+            }
+        </select>
+    </label>
+
+    <label class="field" style="width: 150px;">
+        <span>Tipo de provento</span>
+        <select @bind="_filtroTipo" @bind:after="FiltrarAsync">
+            <option value="">Todos os tipos</option>
+            @foreach (var tipo in Enum.GetValues<TipoDividendo>())
+            {
+                <option value="@tipo">@tipo</option>
+            }
+        </select>
+    </label>
+
+    <label class="field" style="width: 135px;">
+        <span>Data início</span>
+        <input type="date" @bind="_filtroDataInicio" @bind:after="FiltrarAsync" />
+    </label>
+
+    <label class="field" style="width: 135px;">
+        <span>Data fim</span>
+        <input type="date" @bind="_filtroDataFim" @bind:after="FiltrarAsync" />
+    </label>
+
+    <div class="search-field" style="margin-top: 19px;">
+        <Icon Name="search" Size="16" />
+        <input type="text" placeholder="Filtrar por descrição..." @bind="_buscaTexto" @bind:event="oninput" />
+    </div>
+</div>
+
+@if (_mensagemErro is not null && _pagina is null)
+{
+    <div class="card state-card">
+        <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+            <Icon Name="alert" Size="28" />
+        </div>
+        <h2>Não foi possível carregar os dividendos</h2>
+        <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+        <button type="button" class="btn btn-primary" @onclick="CarregarAsync">
+            <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+        </button>
+    </div>
+}
+else if (_pagina is null)
+{
+    <LoadingState Mensagem="Carregando dividendos..." Subtitulo="Recuperando histórico de proventos e rendimentos." />
+}
+else
+{
+    var itens = _pagina.Itens.AsEnumerable();
+    if (!string.IsNullOrWhiteSpace(_filtroTipo))
+    {
+        if (Enum.TryParse<TipoDividendo>(_filtroTipo, out var t))
+        {
+            itens = itens.Where(x => x.TipoDividendo == t);
+        }
+    }
+    if (!string.IsNullOrWhiteSpace(_buscaTexto))
+    {
+        itens = itens.Where(x => (x.Descricao ?? string.Empty).Contains(_buscaTexto, StringComparison.OrdinalIgnoreCase));
+    }
+    var lista = itens.ToList();
+    var totalRegistros = _pagina.Total;
+    var totalPaginas = (int)Math.Ceiling((double)totalRegistros / _tamanhoPagina);
+    if (totalPaginas < 1) totalPaginas = 1;
+    var inicio = totalRegistros == 0 ? 0 : ((_paginaAtual - 1) * _tamanhoPagina) + 1;
+    var fim = Math.Min(_paginaAtual * _tamanhoPagina, totalRegistros);
+
+    if (lista.Count == 0)
+    {
+        <div class="card state-card">
+            <div class="empty-icon"><Icon Name="dividend" Size="28" /></div>
+            <h2>Nenhum dividendo encontrado</h2>
+            <p>Cadastre proventos recebidos ou importe os extratos da B3.</p>
+            <button type="button" class="btn btn-primary" @onclick="Novo">
+                <Icon Name="plus" Size="16" /><span>Lançar primeiro dividendo</span>
+            </button>
+        </div>
+    }
+    else
+    {
+        var totalRecebido = lista.Sum(d => d.ValorRecebido);
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Papel</th>
+                        <th class="alinhar-centro">Tipo</th>
+                        <th class="alinhar-direita">Valor recebido</th>
+                        <th class="alinhar-direita">Quantidade base</th>
+                        <th class="alinhar-direita">Valor unitário</th>
+                        <th class="alinhar-centro">Data</th>
+                        <th class="alinhar-centro">Histórico</th>
+                        <th>Descrição</th>
+                        <th class="alinhar-direita">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var dividendo in lista)
+                    {
+                        var unitario = dividendo.Quantidade > 0 ? dividendo.ValorRecebido / dividendo.Quantidade : 0m;
+                        <tr>
+                            <td>
+                                <a class="paper-link" href="/papeis/@dividendo.PapelId">@NomePapel(dividendo.PapelId)</a>
+                            </td>
+                            <td class="alinhar-centro">
+                                <span class="badge badge-info">@dividendo.TipoDividendo</span>
+                            </td>
+                            <td class="alinhar-direita positive font-bold">@dividendo.ValorRecebido.ToString("C2")</td>
+                            <td class="alinhar-direita">@dividendo.Quantidade.ToString("N2")</td>
+                            <td class="alinhar-direita">@unitario.ToString("C4")</td>
+                            <td class="alinhar-centro">@dividendo.Data.ToString("dd/MM/yyyy")</td>
+                            <td class="alinhar-centro">
+                                <span class="badge @(dividendo.Historico ? "badge-info" : "badge-neutral")">
+                                    @(dividendo.Historico ? "Sim" : "Não")
+                                </span>
+                            </td>
+                            <td style="color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;">@dividendo.Descricao</td>
+                            <td class="alinhar-direita">
+                                <div class="row-actions">
+                                    <button type="button" title="Editar" @onclick="() => Editar(dividendo)"><Icon Name="edit" Size="14" /></button>
+                                    <button type="button" class="danger" title="Remover" @onclick="() => RemoverAsync(dividendo)"><Icon Name="trash" Size="14" /></button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="table-footer">
+                <strong>Total recebido (página): @totalRecebido.ToString("C2")</strong>
+                <span>Mostrando @inicio–@fim de @_pagina.Total proventos</span>
+                @if (totalPaginas > 1)
+                {
+                    <div class="pagination">
+                        <button type="button" @onclick="() => MudarPagina(_paginaAtual - 1)" disabled="@(_paginaAtual <= 1)">‹</button>
+                        @for (var p = 1; p <= totalPaginas; p++)
+                        {
+                            var numPagina = p;
+                            <button type="button" class="@(numPagina == _paginaAtual ? "active" : "")" @onclick="() => MudarPagina(numPagina)">@numPagina</button>
+                        }
+                        <button type="button" @onclick="() => MudarPagina(_paginaAtual + 1)" disabled="@(_paginaAtual >= totalPaginas)">›</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+<!-- Drawer: Novo / Editar Dividendo -->
+@if (_modelo is not null)
+{
+    <div class="overlay">
+        <button type="button" class="overlay-close" @onclick="Cancelar"></button>
+        <div class="drawer">
+            <div class="drawer-head">
+                <div>
+                    <span>Formulário de provento</span>
+                    <h2>@(_editandoId is null ? "Novo dividendo" : "Editar dividendo")</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="Cancelar"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modelo" OnValidSubmit="SalvarAsync" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+                <DataAnnotationsValidator />
+                
+                <div class="drawer-body">
+                    @if (_editandoId is null)
+                    {
+                        <div class="field">
+                            <span>Papel</span>
+                            <InputSelect @bind-Value="_modelo.PapelId">
+                                <option value="">Selecione o papel...</option>
+                                @if (_papeis is not null)
+                                {
+                                    @foreach (var papel in _papeis)
+                                    {
+                                        <option value="@papel.Id">@papel.Codigo — @papel.Nome</option>
+                                    }
+                                }
+                            </InputSelect>
+                            <ValidationMessage For="@(() => _modelo.PapelId)" />
+                        </div>
+                    }
+
+                    <div class="field">
+                        <span>Tipo de provento</span>
+                        <InputSelect @bind-Value="_modelo.TipoDividendo">
+                            @foreach (var tipo in Enum.GetValues<TipoDividendo>())
+                            {
+                                <option value="@tipo">@tipo</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <span>Valor recebido (R$)</span>
+                            <InputNumber @bind-Value="_modelo.ValorRecebido" step="0.01" />
+                            <ValidationMessage For="@(() => _modelo.ValorRecebido)" />
+                        </div>
+                        <div class="field">
+                            <span>Quantidade base de cotas</span>
+                            <InputNumber @bind-Value="_modelo.Quantidade" step="0.01" />
+                            <ValidationMessage For="@(() => _modelo.Quantidade)" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <span>Data do pagamento</span>
+                        <InputDate @bind-Value="_modelo.Data" />
+                        <ValidationMessage For="@(() => _modelo.Data)" />
+                    </div>
+
+                    <div class="field">
+                        <span>Descrição (opcional)</span>
+                        <InputText @bind-Value="_modelo.Descricao" placeholder="Ex: Rendimento, JCP, Dividendo..." />
+                    </div>
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="Cancelar">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                        @(_salvando ? "Salvando..." : "Salvar dividendo")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private PaginaResultado<DividendoResponse>? _pagina;
+    private IReadOnlyList<PapelResponse>? _papeis;
+    private string _filtroPapelId = string.Empty;
+    private string _filtroTipoPapel = string.Empty;
+    private string _filtroTipo = string.Empty;
+    private DateOnly? _filtroDataInicio;
+    private DateOnly? _filtroDataFim;
+    private string _buscaTexto = string.Empty;
+    private string? _mensagemErro;
+    private string? _mensagemSucesso;
+    private bool _salvando;
+
+    private int _paginaAtual = 1;
+    private const int _tamanhoPagina = 20;
+
+    private Guid? _editandoId;
+    private FormDividendo? _modelo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarAsync();
+    }
+
+    private async Task FiltrarAsync()
+    {
+        _paginaAtual = 1;
+        await CarregarAsync();
+    }
+
+    private async Task MudarPagina(int novaPagina)
+    {
+        if (novaPagina < 1) return;
+        _paginaAtual = novaPagina;
+        await CarregarAsync();
+    }
+
+    private async Task CarregarPapeisAsync()
+    {
+        var todos = new List<PapelResponse>();
+        var pagina = 1;
+        while (true)
+        {
+            var r = await ApiClient.ListarPapeisAsync(page: pagina, pageSize: 100);
+            todos.AddRange(r.Itens);
+            if (todos.Count >= r.Total || r.Itens.Count == 0)
+            {
+                break;
+            }
+            pagina++;
+        }
+        _papeis = todos;
+    }
+
+    private async Task CarregarAsync()
+    {
+        _mensagemErro = null;
+        try
+        {
+            if (_papeis is null)
+            {
+                await CarregarPapeisAsync();
+            }
+
+            Guid? papelId = Guid.TryParse(_filtroPapelId, out var id) ? id : null;
+            TipoPapel? tipoPapel = Enum.TryParse<TipoPapel>(_filtroTipoPapel, out var tp) ? tp : null;
+
+            _pagina = await ApiClient.ListarDividendosAsync(
+                papelId: papelId,
+                tipoPapel: tipoPapel,
+                dataInicio: _filtroDataInicio,
+                dataFim: _filtroDataFim,
+                page: _paginaAtual,
+                pageSize: _tamanhoPagina);
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private string NomePapel(Guid papelId)
+    {
+        var papel = _papeis?.FirstOrDefault(p => p.Id == papelId);
+        return papel is not null ? $"{papel.Codigo}" : papelId.ToString()[..8];
+    }
+
+    private void Novo()
+    {
+        _editandoId = null;
+        _modelo = new FormDividendo();
+    }
+
+    private void Editar(DividendoResponse d)
+    {
+        _editandoId = d.Id;
+        _modelo = new FormDividendo
+        {
+            PapelId = d.PapelId,
+            TipoDividendo = d.TipoDividendo,
+            ValorRecebido = d.ValorRecebido,
+            Quantidade = d.Quantidade,
+            Data = d.Data,
+            Descricao = d.Descricao
+        };
+    }
+
+    private void Cancelar()
+    {
+        _modelo = null;
+        _editandoId = null;
+    }
+
+    private async Task SalvarAsync()
+    {
+        if (_modelo is null) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            if (_editandoId is null)
+            {
+                await ApiClient.CriarDividendoAsync(new CriarDividendoRequest(
+                    _modelo.PapelId,
+                    _modelo.TipoDividendo,
+                    _modelo.ValorRecebido,
+                    _modelo.Quantidade,
+                    _modelo.Data,
+                    _modelo.Descricao));
+                _mensagemSucesso = "Dividendo registrado com sucesso!";
+            }
+            else
+            {
+                await ApiClient.AtualizarDividendoAsync(_editandoId.Value, new AtualizarDividendoRequest(
+                    _modelo.TipoDividendo,
+                    _modelo.ValorRecebido,
+                    _modelo.Quantidade,
+                    _modelo.Data,
+                    _modelo.Descricao));
+                _mensagemSucesso = "Dividendo atualizado com sucesso!";
+            }
+            _modelo = null;
+            _editandoId = null;
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private async Task RemoverAsync(DividendoResponse d)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.RemoverDividendoAsync(d.Id);
+            _mensagemSucesso = "Dividendo removido com sucesso.";
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private sealed class FormDividendo
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Selecione o papel.")]
+        public Guid PapelId { get; set; }
+
+        public TipoDividendo TipoDividendo { get; set; } = TipoDividendo.Dividendo;
+
+        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "O valor deve ser positivo.")]
+        public decimal ValorRecebido { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Range(0, double.MaxValue, ErrorMessage = "A quantidade não pode ser negativa.")]
+        public decimal Quantidade { get; set; }
+
+        public DateOnly Data { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+        public string? Descricao { get; set; }
+    }
+}

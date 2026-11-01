@@ -1,0 +1,490 @@
+@page "/papeis-geral"
+@using InvestProMax.SharedUI.Common
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+<header class="page-header">
+    <div>
+        <div class="breadcrumb">InvestProMax <Icon Name="chevron" Size="12" /> Carteira de investimentos</div>
+        <h1>Papéis</h1>
+        <div class="ultima-atualizacao-cotacoes" style="font-size: 13px; color: var(--muted); margin-top: 4px;">
+            @ObterTextoUltimaAtualizacao()
+        </div>
+    </div>
+    <div class="page-actions">
+        <a href="configuracoes" class="btn btn-secondary">
+            <Icon Name="upload" Size="16" /><span>Importar B3</span>
+        </a>
+        <button type="button" class="btn btn-secondary" @onclick="AtualizarCotacoesAsync" disabled="@(_atualizandoCotacoes || _carregando)">
+            <Icon Name="refresh" Size="16" /><span>Atualizar cotações</span>
+        </button>
+        <button type="button" class="btn btn-primary" @onclick="CarregarAsync" disabled="@_carregando">
+            <Icon Name="refresh" Size="16" /><span>Atualizar</span>
+        </button>
+    </div>
+</header>
+
+<div class="subnav">
+    <a href="papeis-geral" class="active">Visão geral</a>
+    <a href="papeis">Cadastro de papéis</a>
+</div>
+
+@if (_mensagemInfo is not null)
+{
+    <div class="alerta-sucesso" style="margin-bottom: 16px;">@_mensagemInfo</div>
+}
+
+@if (_mensagemErro is not null && _dados is null)
+{
+    <div class="card state-card">
+        <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+            <Icon Name="alert" Size="28" />
+        </div>
+        <h2>Não foi possível carregar a visão geral</h2>
+        <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+        <button type="button" class="btn btn-primary" @onclick="CarregarAsync">
+            <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+        </button>
+    </div>
+}
+else if (_dados is null)
+{
+    <LoadingState Mensagem="Carregando visão geral da carteira..." Subtitulo="Aguarde enquanto calculamos as posições de todos os papéis." />
+}
+else
+{
+    @if (_mensagemErro is not null)
+    {
+        <div class="alerta-erro">@_mensagemErro</div>
+    }
+    var ehPositivo = _dados.GanhoTotal >= 0;
+    <div class="kpi-grid five">
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Total investido</span>
+                <div class="kpi-icon"><Icon Name="transaction" Size="16" /></div>
+            </div>
+            <strong>@FormatarMoeda(_dados.TotalInvestido)</strong>
+            <div class="kpi-meta"><span>Custo de aquisição</span></div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Total atual</span>
+                <div class="kpi-icon"><Icon Name="assets" Size="16" /></div>
+            </div>
+            <strong>@FormatarMoeda(_dados.TotalAtual)</strong>
+            <div class="kpi-meta"><span>Cotação de mercado</span></div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Ganho total</span>
+                <div class="kpi-icon @(ehPositivo ? "positive" : "negative")">
+                    <Icon Name="papers" Size="16" />
+                </div>
+            </div>
+            <strong class="@(ehPositivo ? "positive" : "negative")">@FormatarMoeda(_dados.GanhoTotal)</strong>
+            <div class="kpi-meta @(ehPositivo ? "positive" : "negative")">
+                <span>@(ehPositivo ? "+" : "")@_dados.ValorizacaoPercentualGeral.ToString("N2")%</span>
+            </div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Dividendos</span>
+                <div class="kpi-icon positive"><Icon Name="dividend" Size="16" /></div>
+            </div>
+            <strong class="positive">@FormatarMoeda(_dados.TotalDividendos)</strong>
+            <div class="kpi-meta positive"><span>Acumulado recebido</span></div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>DY total</span>
+                <div class="kpi-icon"><Icon Name="dividend" Size="16" /></div>
+            </div>
+            <strong>@_dados.DyTotalPercentual.ToString("N2")%</strong>
+            <div class="kpi-meta"><span>Sobre o investido</span></div>
+        </section>
+    </div>
+}
+
+<div class="filter-bar">
+    <label class="field" style="width: 140px;">
+        <span>Tipo</span>
+        <select @bind="_filtroTipo" @bind:after="OnFiltroAlteradoAsync">
+            <option value="">Todos os tipos</option>
+            @foreach (var tipo in Enum.GetValues<TipoPapel>())
+            {
+                <option value="@tipo">@tipo</option>
+            }
+        </select>
+    </label>
+
+    <label class="field" style="width: 130px;">
+        <span>Situação</span>
+        <select @bind="_filtroSituacao" @bind:after="OnFiltroAlteradoAsync">
+            <option value="ativos">Ativos</option>
+            <option value="encerrados">Encerrados</option>
+            <option value="todos">Todos</option>
+        </select>
+    </label>
+
+    <label class="field" style="width: 145px;">
+        <span>Data final</span>
+        <InputDate @bind-Value="_dataFinal" @bind-Value:after="OnFiltroAlteradoAsync" />
+    </label>
+
+    <div class="search-field" style="margin-top: 19px;">
+        <Icon Name="search" Size="16" />
+        <input type="text" placeholder="Buscar por código ou nome..." value="@_textoBusca" @oninput="OnBuscaAlterada" />
+    </div>
+
+    <button type="button" class="btn btn-ghost" style="margin-top: 19px;" @onclick="LimparFiltrosAsync">
+        Limpar filtros
+    </button>
+</div>
+
+@if (_carregando && _dados is null)
+{
+    <div class="card state-card">
+        <div class="spinner"></div>
+        <h2>Carregando posições da carteira...</h2>
+    </div>
+}
+else if (_dados is null)
+{
+    <div class="card state-card">
+        <div class="empty-icon"><Icon Name="papers" Size="28" /></div>
+        <h2>Nenhum dado carregado</h2>
+        <p>Importe um extrato da B3 ou cadastre novos papéis.</p>
+    </div>
+}
+else
+{
+    var todosFiltrados = ItensOrdenados.ToList();
+    var totalRegistros = todosFiltrados.Count;
+    var totalPaginas = Math.Max(1, (int)Math.Ceiling((double)totalRegistros / _tamanhoPagina));
+    if (_paginaAtual > totalPaginas) _paginaAtual = totalPaginas;
+
+    var inicio = totalRegistros == 0 ? 0 : ((_paginaAtual - 1) * _tamanhoPagina) + 1;
+    var fim = Math.Min(_paginaAtual * _tamanhoPagina, totalRegistros);
+    var itensExibidos = todosFiltrados.Skip((_paginaAtual - 1) * _tamanhoPagina).Take(_tamanhoPagina).ToList();
+
+    @if (totalRegistros == 0)
+    {
+        <div class="card state-card">
+            <div class="empty-icon"><Icon Name="search" Size="28" /></div>
+            <h2>Nenhum papel encontrado</h2>
+            <p>Tente ajustar os filtros de busca ou situação.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th @onclick="() => OrdenarPor(ColCodigo)" style="cursor:pointer;">Código @IndicadorOrdenacao(ColCodigo)</th>
+                        <th class="col-nome-papel" @onclick="() => OrdenarPor(ColNome)" style="cursor:pointer;" title="Nome do papel">Nome @IndicadorOrdenacao(ColNome)</th>
+                        <th class="alinhar-centro" @onclick="() => OrdenarPor(ColTipo)" style="cursor:pointer;">Tipo @IndicadorOrdenacao(ColTipo)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColQuantidade)" style="cursor:pointer;">Quantidade @IndicadorOrdenacao(ColQuantidade)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColPrecoMedio)" style="cursor:pointer;">Preço médio @IndicadorOrdenacao(ColPrecoMedio)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColTotalCompra)" style="cursor:pointer;">Total compra @IndicadorOrdenacao(ColTotalCompra)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColPercentualCompra)" style="cursor:pointer;">% carteira @IndicadorOrdenacao(ColPercentualCompra)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColCotacaoAtual)" style="cursor:pointer;">Cotação atual @IndicadorOrdenacao(ColCotacaoAtual)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColTotalAtual)" style="cursor:pointer;">Total atual @IndicadorOrdenacao(ColTotalAtual)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColPercentualTotal)" style="cursor:pointer;">% carteira @IndicadorOrdenacao(ColPercentualTotal)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColValorizacao)" style="cursor:pointer;">Valorização @IndicadorOrdenacao(ColValorizacao)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColGanhoTotal)" style="cursor:pointer;">Ganho total @IndicadorOrdenacao(ColGanhoTotal)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColDividendos)" style="cursor:pointer;">Dividendos @IndicadorOrdenacao(ColDividendos)</th>
+                        <th class="alinhar-direita" @onclick="() => OrdenarPor(ColPercentualDividendos)" style="cursor:pointer;">% div./compra @IndicadorOrdenacao(ColPercentualDividendos)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in itensExibidos)
+                    {
+                        var ehItemPositivo = item.GanhoTotal >= 0;
+                        <tr>
+                            <td>
+                                <a class="paper-link" href="/papeis/@item.Id">@item.Codigo</a>
+                            </td>
+                            <td class="col-nome-papel" title="@item.Nome">@item.Nome</td>
+                            <td class="alinhar-centro">
+                                <span class="badge badge-info">@item.TipoPapel</span>
+                            </td>
+                            <td class="alinhar-direita">@item.QuantidadeTotal.ToString("N2")</td>
+                            <td class="alinhar-direita">@FormatarMoeda(item.PrecoMedio)</td>
+                            <td class="alinhar-direita">@FormatarMoeda(item.TotalCompra)</td>
+                            <td class="alinhar-direita">@item.PercentualCompra.ToString("N2")%</td>
+                            <td class="alinhar-direita">@FormatarMoeda(item.CotacaoAtual)</td>
+                            <td class="alinhar-direita font-bold">@FormatarMoeda(item.TotalAtual)</td>
+                            <td class="alinhar-direita">@item.PercentualTotal.ToString("N2")%</td>
+                            <td class="alinhar-direita @(ehItemPositivo ? "positive" : "negative")">
+                                @(ehItemPositivo ? "+" : "")@item.ValorizacaoPercentual.ToString("N2")%
+                            </td>
+                            <td class="alinhar-direita @(ehItemPositivo ? "positive" : "negative")">
+                                @FormatarMoeda(item.GanhoTotal)
+                            </td>
+                            <td class="alinhar-direita positive">
+                                @FormatarMoeda(item.TotalDividendos)
+                            </td>
+                            <td class="alinhar-direita">
+                                @item.PercentualDividendos.ToString("N2")%
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3" class="alinhar-esquerda">Total da carteira</td>
+                        <td class="alinhar-direita">@todosFiltrados.Sum(i => i.QuantidadeTotal).ToString("N2")</td>
+                        <td class="alinhar-direita">–</td>
+                        <td class="alinhar-direita">@FormatarMoeda(_dados.TotalInvestido)</td>
+                        <td class="alinhar-direita">100,00%</td>
+                        <td class="alinhar-direita">–</td>
+                        <td class="alinhar-direita">@FormatarMoeda(_dados.TotalAtual)</td>
+                        <td class="alinhar-direita">100,00%</td>
+                        <td class="alinhar-direita @(_dados.GanhoTotal >= 0 ? "positive" : "negative")">
+                            @_dados.ValorizacaoPercentualGeral.ToString("N2")%
+                        </td>
+                        <td class="alinhar-direita @(_dados.GanhoTotal >= 0 ? "positive" : "negative")">
+                            @FormatarMoeda(_dados.GanhoTotal)
+                        </td>
+                        <td class="alinhar-direita positive">
+                            @FormatarMoeda(_dados.TotalDividendos)
+                        </td>
+                        <td class="alinhar-direita">
+                            @(_dados.TotalInvestido > 0 ? ((_dados.TotalDividendos / _dados.TotalInvestido) * 100m).ToString("N2") + "%" : "0,00%")
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div class="table-footer">
+                <span>Mostrando @inicio–@fim de @totalRegistros papéis</span>
+                @if (totalPaginas > 1)
+                {
+                    <div class="pagination">
+                        <button type="button" @onclick="() => MudarPagina(_paginaAtual - 1)" disabled="@(_paginaAtual <= 1)">‹</button>
+                        @for (var p = 1; p <= totalPaginas; p++)
+                        {
+                            var numPagina = p;
+                            <button type="button" class="@(numPagina == _paginaAtual ? "active" : "")" @onclick="() => MudarPagina(numPagina)">@numPagina</button>
+                        }
+                        <button type="button" @onclick="() => MudarPagina(_paginaAtual + 1)" disabled="@(_paginaAtual >= totalPaginas)">›</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private const string ColCodigo = "Codigo";
+    private const string ColNome = "Nome";
+    private const string ColTipo = "Tipo";
+    private const string ColQuantidade = "Quantidade";
+    private const string ColAluguel = "Aluguel";
+    private const string ColPrecoMedio = "PrecoMedio";
+    private const string ColTotalCompra = "TotalCompra";
+    private const string ColPercentualCompra = "PercentualCompra";
+    private const string ColCotacaoAtual = "CotacaoAtual";
+    private const string ColTotalAtual = "TotalAtual";
+    private const string ColPercentualTotal = "PercentualTotal";
+    private const string ColValorizacao = "Valorizacao";
+    private const string ColGanhoTotal = "GanhoTotal";
+    private const string ColDividendos = "Dividendos";
+    private const string ColPercentualDividendos = "PercentualDividendos";
+
+    private PapeisGeralResponse? _dados;
+    private bool _carregando = true;
+    private bool _atualizandoCotacoes;
+    private string? _mensagemErro;
+    private string? _mensagemInfo;
+
+    private string ObterTextoUltimaAtualizacao()
+    {
+        var maiorData = _dados?.Itens.Select(i => i.CotacaoAtualizadaEm).Where(d => d.HasValue).Max();
+        return DataHoraHelper.FormatarUltimaAtualizacaoCotacoes(maiorData);
+    }
+
+    private async Task AtualizarCotacoesAsync()
+    {
+        _mensagemErro = null;
+        _mensagemInfo = null;
+
+        try
+        {
+            await ApiClient.SolicitarAtualizacaoCotacoesAsync();
+            _atualizandoCotacoes = true;
+            _mensagemInfo = "Atualização solicitada. Pode levar cerca de 1 minuto.";
+            StateHasChanged();
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(60));
+                _atualizandoCotacoes = false;
+                await InvokeAsync(async () =>
+                {
+                    await CarregarAsync();
+                    StateHasChanged();
+                });
+            });
+        }
+        catch (ApiException ex) when (ex.StatusCode == 429)
+        {
+            _mensagemErro = "Aguarde um minuto.";
+        }
+        catch (ApiException ex) when (ex.StatusCode == 503)
+        {
+            _mensagemErro = "Integração de cotações não configurada.";
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private string _filtroTipo = string.Empty;
+    private string _filtroSituacao = "ativos";
+    private DateOnly? _dataFinal;
+    private string _textoBusca = string.Empty;
+
+    private string _colunaOrdenacao = ColTotalAtual;
+    private bool _ordenacaoAscendente = false;
+    private int _paginaAtual = 1;
+    private int _tamanhoPagina = 25;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarAsync();
+    }
+
+    private async Task CarregarAsync()
+    {
+        _carregando = true;
+        _mensagemErro = null;
+        try
+        {
+            TipoPapel? tipo = Enum.TryParse<TipoPapel>(_filtroTipo, out var t) ? t : null;
+            bool? somenteAtivos = _filtroSituacao switch
+            {
+                "ativos" => true,
+                "encerrados" => false,
+                _ => null
+            };
+
+            _dados = await ApiClient.ObterPapeisGeralAsync(tipo, somenteAtivos, _dataFinal);
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = "Erro ao carregar os dados: " + ex.Message;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private async Task OnFiltroAlteradoAsync()
+    {
+        _paginaAtual = 1;
+        await CarregarAsync();
+    }
+
+    private async Task LimparFiltrosAsync()
+    {
+        _filtroTipo = string.Empty;
+        _filtroSituacao = "ativos";
+        _dataFinal = null;
+        _textoBusca = string.Empty;
+        _paginaAtual = 1;
+        await CarregarAsync();
+    }
+
+    private void OnBuscaAlterada(ChangeEventArgs e)
+    {
+        _textoBusca = e.Value?.ToString() ?? string.Empty;
+        _paginaAtual = 1;
+    }
+
+    private void MudarPagina(int novaPagina)
+    {
+        if (novaPagina < 1) return;
+        _paginaAtual = novaPagina;
+    }
+
+    private void OrdenarPor(string coluna)
+    {
+        if (_colunaOrdenacao == coluna)
+        {
+            _ordenacaoAscendente = !_ordenacaoAscendente;
+        }
+        else
+        {
+            _colunaOrdenacao = coluna;
+            _ordenacaoAscendente = true;
+        }
+    }
+
+    private string IndicadorOrdenacao(string coluna)
+    {
+        if (_colunaOrdenacao != coluna) return "↕";
+        return _ordenacaoAscendente ? "↑" : "↓";
+    }
+
+    private IEnumerable<PapelGeralItemResponse> ItensOrdenados
+    {
+        get
+        {
+            if (_dados is null) return Enumerable.Empty<PapelGeralItemResponse>();
+
+            var itens = _dados.Itens.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_textoBusca))
+            {
+                var termo = _textoBusca.Trim();
+                itens = itens.Where(i =>
+                    i.Codigo.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
+                    i.Nome.Contains(termo, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return _colunaOrdenacao switch
+            {
+                ColCodigo => _ordenacaoAscendente ? itens.OrderBy(i => i.Codigo) : itens.OrderByDescending(i => i.Codigo),
+                ColNome => _ordenacaoAscendente ? itens.OrderBy(i => i.Nome) : itens.OrderByDescending(i => i.Nome),
+                ColTipo => _ordenacaoAscendente ? itens.OrderBy(i => i.TipoPapel) : itens.OrderByDescending(i => i.TipoPapel),
+                ColQuantidade => _ordenacaoAscendente ? itens.OrderBy(i => i.QuantidadeTotal) : itens.OrderByDescending(i => i.QuantidadeTotal),
+                ColAluguel => _ordenacaoAscendente ? itens.OrderBy(i => i.QuantidadeEmAluguel) : itens.OrderByDescending(i => i.QuantidadeEmAluguel),
+                ColPrecoMedio => _ordenacaoAscendente ? itens.OrderBy(i => i.PrecoMedio) : itens.OrderByDescending(i => i.PrecoMedio),
+                ColTotalCompra => _ordenacaoAscendente ? itens.OrderBy(i => i.TotalCompra) : itens.OrderByDescending(i => i.TotalCompra),
+                ColPercentualCompra => _ordenacaoAscendente ? itens.OrderBy(i => i.PercentualCompra) : itens.OrderByDescending(i => i.PercentualCompra),
+                ColCotacaoAtual => _ordenacaoAscendente ? itens.OrderBy(i => i.CotacaoAtual) : itens.OrderByDescending(i => i.CotacaoAtual),
+                ColTotalAtual => _ordenacaoAscendente ? itens.OrderBy(i => i.TotalAtual) : itens.OrderByDescending(i => i.TotalAtual),
+                ColPercentualTotal => _ordenacaoAscendente ? itens.OrderBy(i => i.PercentualTotal) : itens.OrderByDescending(i => i.PercentualTotal),
+                ColValorizacao => _ordenacaoAscendente ? itens.OrderBy(i => i.ValorizacaoPercentual) : itens.OrderByDescending(i => i.ValorizacaoPercentual),
+                ColGanhoTotal => _ordenacaoAscendente ? itens.OrderBy(i => i.GanhoTotal) : itens.OrderByDescending(i => i.GanhoTotal),
+                ColDividendos => _ordenacaoAscendente ? itens.OrderBy(i => i.TotalDividendos) : itens.OrderByDescending(i => i.TotalDividendos),
+                ColPercentualDividendos => _ordenacaoAscendente ? itens.OrderBy(i => i.PercentualDividendos) : itens.OrderByDescending(i => i.PercentualDividendos),
+                _ => itens
+            };
+        }
+    }
+
+    private static string FormatarMoeda(decimal valor) =>
+        valor.ToString("C2", new System.Globalization.CultureInfo("pt-BR"));
+}

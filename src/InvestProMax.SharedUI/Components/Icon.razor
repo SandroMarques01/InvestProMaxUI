@@ -1,0 +1,107 @@
+@namespace InvestProMax.SharedUI.Components
+
+<svg class="icon @Class" width="@Size" height="@Size" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    @switch (Name?.ToLowerInvariant())
+    {
+        case "dashboard":
+            <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+            break;
+        case "papers":
+        case "papeis":
+            <path d="M4 19V9" /><path d="M10 19V5" /><path d="M16 19v-7" /><path d="M22 19H2" />
+            break;
+        case "transaction":
+        case "transacoes":
+            <path d="m7 7-4 4 4 4" /><path d="M3 11h14" /><path d="m17 3 4 4-4 4" /><path d="M21 7H7" />
+            break;
+        case "dividend":
+        case "dividendos":
+            <circle cx="12" cy="12" r="9" /><path d="M16 8.5c-.7-.8-1.8-1.3-3.2-1.3-1.8 0-3.1.9-3.1 2.2 0 3.4 6.7 1.7 6.7 5 0 1.4-1.4 2.4-3.4 2.4-1.5 0-2.8-.5-3.7-1.5M12.8 5.4v13.2" />
+            break;
+        case "inventory":
+        case "inventario":
+            <path d="M4 7h16v13H4z" /><path d="m8 7 1-3h6l1 3M9 12h6" />
+            break;
+        case "assets":
+        case "ativos":
+            <path d="M3 21h18" /><path d="M5 21V8l7-5 7 5v13" /><path d="M9 21v-6h6v6" />
+            break;
+        case "bills":
+        case "contas":
+            <path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" />
+            break;
+        case "segments":
+        case "segmentos":
+            <path d="M20 13 13 20l-9-9V4h7z" /><circle cx="8.5" cy="8.5" r="1" />
+            break;
+        case "settings":
+        case "configuracoes":
+            <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+            break;
+        case "menu":
+            <path d="M4 6h16M4 12h16M4 18h16" />
+            break;
+        case "plus":
+            <path d="M12 5v14M5 12h14" />
+            break;
+        case "download":
+            <path d="M12 3v12m-4-4 4 4 4-4" /><path d="M4 19h16" />
+            break;
+        case "refresh":
+            <path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" />
+            break;
+        case "search":
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+            break;
+        case "chevron":
+            <path d="m9 18 6-6-6-6" />
+            break;
+        case "close":
+            <path d="m6 6 12 12M18 6 6 18" />
+            break;
+        case "edit":
+            <path d="m4 20 4.2-1 10.4-10.4a2 2 0 0 0-2.8-2.8L5.4 16.2Z" /><path d="m14 7 3 3" />
+            break;
+        case "trash":
+            <path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6" />
+            break;
+        case "user":
+            <circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" />
+            break;
+        case "logout":
+            <path d="M10 17l5-5-5-5M15 12H3" /><path d="M14 3h7v18h-7" />
+            break;
+        case "upload":
+            <path d="M12 16V4m-4 4 4-4 4 4" /><path d="M4 20h16" />
+            break;
+        case "arrow":
+            <path d="M5 12h14m-5-5 5 5-5 5" />
+            break;
+        case "alert":
+        case "warning":
+            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            break;
+        case "moon":
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            break;
+        case "sun":
+            <circle cx="12" cy="12" r="5" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+            break;
+        case "copy":
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            break;
+        case "evolution":
+        case "chart":
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
+            break;
+        default:
+            <circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" />
+            break;
+    }
+</svg>
+
+@code {
+    [Parameter] public string Name { get; set; } = string.Empty;
+    [Parameter] public int Size { get; set; } = 18;
+    [Parameter] public string Class { get; set; } = string.Empty;
+}

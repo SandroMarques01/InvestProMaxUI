@@ -1,0 +1,15 @@
+@namespace InvestProMax.SharedUI.Components
+
+<div class="card state-card">
+    <img src="_content/InvestProMax.SharedUI/images/loading.gif" alt="Carregando..." class="loading-gif" />
+    <h2>@Mensagem</h2>
+    <p>@Subtitulo</p>
+</div>
+
+@code {
+    [Parameter]
+    public string Mensagem { get; set; } = "Carregando dados...";
+
+    [Parameter]
+    public string Subtitulo { get; set; } = "Por favor, aguarde um instante.";
+}

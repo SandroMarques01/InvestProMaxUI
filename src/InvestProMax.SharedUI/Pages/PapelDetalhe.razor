@@ -1,0 +1,305 @@
+@page "/papeis/{Id:guid}"
+@using System.Globalization
+@using InvestProMax.SharedUI.Common
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+@if (_mensagemErro is not null && _detalhe is null)
+{
+    <div class="card state-card">
+        <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+            <Icon Name="alert" Size="28" />
+        </div>
+        <h2>Não foi possível carregar os detalhes do papel</h2>
+        <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+        <button type="button" class="btn btn-primary" @onclick="CarregarAsync">
+            <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+        </button>
+    </div>
+}
+else if (_detalhe is null)
+{
+    <LoadingState Mensagem="Carregando detalhes do papel..." Subtitulo="Obtendo métricas, transações e dividendos históricos." />
+}
+else
+{
+    @if (_mensagemErro is not null)
+    {
+        <div class="alerta-erro">@_mensagemErro</div>
+    }
+    var papel = _detalhe.Papel;
+    var totalInvestido = papel.QuantidadeAtual * papel.PrecoMedio;
+    var totalAtual = papel.QuantidadeAtual * papel.CotacaoAtual;
+    var ganhoTotal = totalAtual - totalInvestido;
+    var ehPositivo = ganhoTotal >= 0;
+
+    <header class="page-header">
+        <div>
+            <div class="breadcrumb">
+                <a href="papeis-geral">InvestProMax</a> <Icon Name="chevron" Size="12" />
+                <a href="papeis-geral">Papéis</a> <Icon Name="chevron" Size="12" /> Detalhe
+            </div>
+            <h1>@papel.Codigo</h1>
+        </div>
+        <div class="page-actions">
+            <a href="papeis" class="btn btn-secondary">
+                <Icon Name="edit" Size="16" /><span>Gerenciar papéis</span>
+            </a>
+            <a href="transacoes" class="btn btn-primary">
+                <Icon Name="plus" Size="16" /><span>Nova transação</span>
+            </a>
+        </div>
+    </header>
+
+    <div class="detail-identity">
+        <div>
+            <h2>@papel.Nome</h2>
+            <span class="badge badge-info">@papel.TipoPapel</span>
+            <span class="badge @(papel.QuantidadeAtual > 0 ? "badge-positive" : "badge-neutral")">
+                @(papel.QuantidadeAtual > 0 ? "Ativo" : "Encerrado")
+            </span>
+        </div>
+        <div class="detail-cotacao-meta" style="font-size: 13px; color: var(--muted); margin-top: 4px;">
+            <span>Cotação atualizada em: <strong>@DataHoraHelper.FormatarDataHoraBrasilia(papel.CotacaoAtualizadaEm)</strong></span>
+            <span style="margin: 0 6px;">•</span>
+            <span>Fonte: <strong>@(string.IsNullOrWhiteSpace(papel.FonteCotacao) ? "Manual" : papel.FonteCotacao)</strong></span>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(papel.Descricao))
+        {
+            <span>@papel.Descricao</span>
+        }
+    </div>
+
+    <div class="kpi-grid six">
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Cotação atual</span>
+                <div class="kpi-icon"><Icon Name="assets" Size="16" /></div>
+            </div>
+            <strong>@Moeda(papel.CotacaoAtual)</strong>
+            <div class="kpi-meta">
+                <span>@(string.IsNullOrWhiteSpace(papel.FonteCotacao) ? "Manual" : papel.FonteCotacao) • @DataHoraHelper.FormatarDataHoraBrasilia(papel.CotacaoAtualizadaEm)</span>
+            </div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Quantidade</span>
+                <div class="kpi-icon"><Icon Name="papers" Size="16" /></div>
+            </div>
+            <strong>@papel.QuantidadeAtual.ToString("N2", Br)</strong>
+            <div class="kpi-meta">
+                <span>@(papel.QuantidadeEmAluguel > 0 ? $"{papel.QuantidadeEmAluguel.ToString("N2", Br)} em aluguel" : "0 em aluguel")</span>
+            </div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Preço médio</span>
+                <div class="kpi-icon"><Icon Name="transaction" Size="16" /></div>
+            </div>
+            <strong>@Moeda(papel.PrecoMedio)</strong>
+            <div class="kpi-meta"><span>Por cota/ação</span></div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Total investido</span>
+                <div class="kpi-icon"><Icon Name="transaction" Size="16" /></div>
+            </div>
+            <strong>@Moeda(totalInvestido)</strong>
+            <div class="kpi-meta"><span>Custo de aquisição</span></div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Valor atual</span>
+                <div class="kpi-icon"><Icon Name="assets" Size="16" /></div>
+            </div>
+            <strong>@Moeda(totalAtual)</strong>
+            <div class="kpi-meta"><span>Posição a mercado</span></div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Ganho total</span>
+                <div class="kpi-icon @(ehPositivo ? "positive" : "negative")">
+                    <Icon Name="papers" Size="16" />
+                </div>
+            </div>
+            <strong class="@(ehPositivo ? "positive" : "negative")">@Moeda(ganhoTotal)</strong>
+            <div class="kpi-meta @(ehPositivo ? "positive" : "negative")">
+                <span>@(ehPositivo ? "+" : "")@(totalInvestido > 0 ? (ganhoTotal / totalInvestido).ToString("P2", Br) : "0,00%")</span>
+            </div>
+        </section>
+    </div>
+
+    <div class="tabs">
+        <button type="button" class="@(_abaAtiva == "transacoes" ? "active" : "")" @onclick="@(() => _abaAtiva = "transacoes")">
+            Transações <span>@_detalhe.Transacoes.Count</span>
+        </button>
+        <button type="button" class="@(_abaAtiva == "dividendos" ? "active" : "")" @onclick="@(() => _abaAtiva = "dividendos")">
+            Dividendos <span>@_detalhe.Dividendos.Count</span>
+        </button>
+    </div>
+
+    @if (_abaAtiva == "transacoes")
+    {
+        @if (_detalhe.Transacoes.Count == 0)
+        {
+            <div class="card state-card">
+                <div class="empty-icon"><Icon Name="transaction" Size="28" /></div>
+                <h2>Nenhuma transação registrada</h2>
+                <p>Cadastre compras ou vendas para este papel.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th class="alinhar-direita">Valor unit.</th>
+                            <th class="alinhar-direita">Quantidade</th>
+                            <th class="alinhar-direita">Total</th>
+                            <th class="alinhar-direita">Evolução</th>
+                            <th class="alinhar-direita">$ Atual</th>
+                            <th class="alinhar-direita">$ Ganho</th>
+                            <th class="alinhar-direita">Evolução atual</th>
+                            <th class="alinhar-centro">Tipo</th>
+                            <th>Descrição</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _detalhe.Transacoes)
+                        {
+                            var ehGanhoPositivo = t.GanhoUnitario >= 0;
+                            <tr>
+                                <td>@Data(t.Data)</td>
+                                <td class="alinhar-direita">@Moeda(t.ValorUnitario)</td>
+                                <td class="alinhar-direita">@t.Quantidade.ToString("N2", Br)</td>
+                                <td class="alinhar-direita">@Moeda(t.Total)</td>
+                                <td class="alinhar-direita">@Moeda(t.Evolucao)</td>
+                                <td class="alinhar-direita">@Moeda(t.CotacaoAtual)</td>
+                                <td class="alinhar-direita @(ehGanhoPositivo ? "positive" : "negative")">@Moeda(t.GanhoUnitario)</td>
+                                <td class="alinhar-direita">@Moeda(t.EvolucaoAtual)</td>
+                                <td class="alinhar-centro">
+                                    <span class="badge @(t.TipoTransacao == TipoTransacao.Compra ? "badge-positive" : "badge-negative")">
+                                        @t.TipoTransacao
+                                    </span>
+                                </td>
+                                <td>@t.Descricao</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="table-footer">
+                    <strong>Total atual: @Moeda(totalAtual)</strong>
+                    <span>@_detalhe.Transacoes.Count registros exibidos</span>
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        @if (_detalhe.Dividendos.Count == 0)
+        {
+            <div class="card state-card">
+                <div class="empty-icon"><Icon Name="dividend" Size="28" /></div>
+                <h2>Nenhum dividendo registrado</h2>
+                <p>Nenhum provento foi registrado para este papel até o momento.</p>
+            </div>
+        }
+        else
+        {
+            var totalProventos = _detalhe.Dividendos.Sum(d => d.ValorRecebido);
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th class="alinhar-direita">Valor recebido</th>
+                            <th class="alinhar-direita">Qtd</th>
+                            <th class="alinhar-direita">Valor unit.</th>
+                            <th class="alinhar-direita">$ Médio</th>
+                            <th class="alinhar-direita">Yield on Cost</th>
+                            <th class="alinhar-direita">$ Atual</th>
+                            <th class="alinhar-direita">DY %</th>
+                            <th class="alinhar-direita">Evolução</th>
+                            <th class="alinhar-direita">Evolução %</th>
+                            <th class="alinhar-centro">Tipo</th>
+                            <th>Descrição</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in _detalhe.Dividendos)
+                        {
+                            <tr>
+                                <td>@Data(d.Data)</td>
+                                <td class="alinhar-direita positive font-bold">@Moeda(d.ValorRecebido)</td>
+                                <td class="alinhar-direita">@d.Quantidade.ToString("N2", Br)</td>
+                                <td class="alinhar-direita">@Moeda(d.ValorUnitario)</td>
+                                <td class="alinhar-direita">@Moeda(d.PrecoMedio)</td>
+                                <td class="alinhar-direita">@Pct(d.YieldOnCostPercentual)</td>
+                                <td class="alinhar-direita">@Moeda(d.CotacaoAtual)</td>
+                                <td class="alinhar-direita">@Pct(d.DyPercentual)</td>
+                                <td class="alinhar-direita">@Moeda(d.Evolucao)</td>
+                                <td class="alinhar-direita">@Pct(d.EvolucaoPercentual)</td>
+                                <td class="alinhar-centro">
+                                    <span class="badge badge-info">@d.TipoDividendo</span>
+                                </td>
+                                <td>@d.Descricao</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="table-footer">
+                    <strong>Total recebido: @Moeda(totalProventos)</strong>
+                    <span>@_detalhe.Dividendos.Count proventos exibidos</span>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private static readonly CultureInfo Br = new("pt-BR");
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private PapelDetalheResponse? _detalhe;
+    private string? _mensagemErro;
+    private string _abaAtiva = "transacoes";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await CarregarAsync();
+    }
+
+    private async Task CarregarAsync()
+    {
+        _mensagemErro = null;
+        try
+        {
+            _detalhe = await ApiClient.ObterDetalhePapelAsync(Id);
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = "Erro ao carregar detalhes: " + ex.Message;
+        }
+    }
+
+    private static string Moeda(decimal v) => v.ToString("C2", Br);
+    private static string Pct(decimal v) => v.ToString("N2", Br) + "%";
+    private static string Data(DateOnly d) => d.ToString("dd/MM/yyyy", Br);
+}

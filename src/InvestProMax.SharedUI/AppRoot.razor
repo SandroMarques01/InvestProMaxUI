@@ -1,0 +1,31 @@
+@inject Api.IInvestProMaxApiClient ApiClient
+
+@*
+    Componente raiz comum aos dois heads (Web e MAUI) — cada um registra ESTE componente como
+    root component (não Routes diretamente), pra garantir que a tentativa de restaurar sessão
+    a partir do ITokenStorage do head sempre rode de forma assíncrona e não-bloqueante antes de
+    renderizar qualquer rota. Fazer isso aqui, uma vez só, evita repetir a lógica em cada head
+    (e evita a tentação de bloquear com .GetAwaiter().GetResult() no bootstrap nativo do MAUI,
+    que arrisca deadlock na UI thread).
+*@
+
+@if (_pronto)
+{
+    <Routes />
+}
+else
+{
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;">
+        Carregando Invest Pro Max...
+    </div>
+}
+
+@code {
+    private bool _pronto;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ApiClient.RestaurarSessaoAsync();
+        _pronto = true;
+    }
+}

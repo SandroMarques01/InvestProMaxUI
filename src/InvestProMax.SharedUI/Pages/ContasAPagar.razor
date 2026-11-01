@@ -1,0 +1,663 @@
+@page "/contas-a-pagar"
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+<header class="page-header">
+    <div>
+        <div class="breadcrumb">InvestProMax <Icon Name="chevron" Size="12" /> Gestão financeira</div>
+        <h1>Contas a pagar</h1>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn-secondary" @onclick="GerarFaturasAsync" disabled="@_processando">
+            <Icon Name="refresh" Size="16" /><span>Gerar faturas do mês</span>
+        </button>
+        <button type="button" class="btn btn-primary" @onclick="NovaConta">
+            <Icon Name="plus" Size="16" /><span>Nova conta</span>
+        </button>
+    </div>
+</header>
+
+@if (_mensagemErro is not null)
+{
+    <div class="alerta-erro">@_mensagemErro</div>
+}
+@if (_mensagemSucesso is not null)
+{
+    <div class="alerta-sucesso">@_mensagemSucesso</div>
+}
+
+<!-- KPIs -->
+@if (_paginaFaturas is not null)
+{
+    var faturas = _paginaFaturas.Itens;
+    var totalPrevisto = faturas.Sum(f => f.ValorPrevisto);
+    var totalPago = faturas.Where(f => f.Status == StatusFatura.Paga).Sum(f => f.Pagamento?.ValorPago ?? f.ValorPrevisto);
+    var totalAtrasado = faturas.Where(f => f.Status == StatusFatura.Atrasada).Sum(f => f.ValorPrevisto);
+    var pctPago = totalPrevisto > 0 ? (totalPago / totalPrevisto) * 100m : 0m;
+
+    <div class="kpi-grid three">
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Total previsto</span>
+                <div class="kpi-icon"><Icon Name="bills" Size="16" /></div>
+            </div>
+            <strong>@totalPrevisto.ToString("C2")</strong>
+            <div class="kpi-meta"><span>@faturas.Count faturas na competência</span></div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Total pago</span>
+                <div class="kpi-icon positive"><Icon Name="assets" Size="16" /></div>
+            </div>
+            <strong class="positive">@totalPago.ToString("C2")</strong>
+            <div class="kpi-meta positive"><span>@pctPago.ToString("N1")% do previsto liquidado</span></div>
+        </section>
+
+        <section class="card kpi">
+            <div class="kpi-top">
+                <span>Total em atraso</span>
+                <div class="kpi-icon @(totalAtrasado > 0 ? "negative" : "warning")">
+                    <Icon Name="bills" Size="16" />
+                </div>
+            </div>
+            <strong class="@(totalAtrasado > 0 ? "negative" : "")">@totalAtrasado.ToString("C2")</strong>
+            <div class="kpi-meta @(totalAtrasado > 0 ? "negative" : "")">
+                <span>@faturas.Count(f => f.Status == StatusFatura.Atrasada) fatura(s) vencida(s)</span>
+            </div>
+        </section>
+    </div>
+}
+
+<div class="tabs">
+    <button type="button" class="@(_abaAtiva == "faturas" ? "active" : "")" @onclick="@(() => _abaAtiva = "faturas")">
+        Faturas geradas <span>@(_paginaFaturas?.Itens.Count ?? 0)</span>
+    </button>
+    <button type="button" class="@(_abaAtiva == "contas" ? "active" : "")" @onclick="@(() => _abaAtiva = "contas")">
+        Contas fixas / recorrentes <span>@(_paginaContas?.Itens.Count ?? 0)</span>
+    </button>
+</div>
+
+@if (_abaAtiva == "faturas")
+{
+    <div class="filter-bar">
+        <label class="field" style="width: 160px;">
+            <span>Status</span>
+            <select @bind="_filtroStatus" @bind:after="CarregarFaturasAsync">
+                <option value="">Todos os status</option>
+                @foreach (var status in Enum.GetValues<StatusFatura>())
+                {
+                    <option value="@status">@status</option>
+                }
+            </select>
+        </label>
+
+        <div class="search-field" style="margin-top: 19px;">
+            <Icon Name="search" Size="16" />
+            <input type="text" placeholder="Filtrar por nome da conta..." @bind="_buscaFatura" @bind:event="oninput" />
+        </div>
+    </div>
+
+    @if (_mensagemErro is not null && _paginaFaturas is null)
+    {
+        <div class="card state-card">
+            <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+                <Icon Name="alert" Size="28" />
+            </div>
+            <h2>Não foi possível carregar as faturas</h2>
+            <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+            <button type="button" class="btn btn-primary" @onclick="CarregarFaturasAsync">
+                <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+            </button>
+        </div>
+    }
+    else if (_paginaFaturas is null)
+    {
+        <LoadingState Mensagem="Carregando faturas..." Subtitulo="Recuperando despesas e compromissos do mês." />
+    }
+    else
+    {
+        var faturasFiltradas = _paginaFaturas.Itens.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_buscaFatura))
+        {
+            faturasFiltradas = faturasFiltradas.Where(f => f.ContaNome.Contains(_buscaFatura, StringComparison.OrdinalIgnoreCase));
+        }
+        var listaFaturas = faturasFiltradas.ToList();
+
+        if (listaFaturas.Count == 0)
+        {
+            <div class="card state-card">
+                <div class="empty-icon"><Icon Name="bills" Size="28" /></div>
+                <h2>Nenhuma fatura encontrada</h2>
+                <p>Clique em "Gerar faturas do mês" para calcular as cobranças do mês corrente.</p>
+                <button type="button" class="btn btn-primary" @onclick="GerarFaturasAsync">
+                    <Icon Name="refresh" Size="16" /><span>Gerar faturas agora</span>
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Conta</th>
+                            <th class="alinhar-centro">Competência</th>
+                            <th class="alinhar-centro">Vencimento</th>
+                            <th class="alinhar-direita">Valor previsto</th>
+                            <th class="alinhar-centro">Status</th>
+                            <th>Pagamento / Observação</th>
+                            <th class="alinhar-direita">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fatura in listaFaturas)
+                        {
+                            var badgeTone = fatura.Status switch
+                            {
+                                StatusFatura.Paga => "badge-positive",
+                                StatusFatura.Atrasada => "badge-negative",
+                                _ => "badge-warning"
+                            };
+
+                            <tr>
+                                <td><strong>@fatura.ContaNome</strong></td>
+                                <td class="alinhar-centro">@fatura.Competencia.ToString("MM/yyyy")</td>
+                                <td class="alinhar-centro">@fatura.DataVencimento.ToString("dd/MM/yyyy")</td>
+                                <td class="alinhar-direita font-bold">@fatura.ValorPrevisto.ToString("C2")</td>
+                                <td class="alinhar-centro">
+                                    <span class="badge @badgeTone">@fatura.Status</span>
+                                </td>
+                                <td>
+                                    @if (fatura.Pagamento is not null)
+                                    {
+                                        <span style="font-size:10px;color:var(--primary);font-weight:600;">
+                                            Pago em @fatura.Pagamento.Data.ToString("dd/MM/yyyy") (@fatura.Pagamento.ValorPago.ToString("C2"))
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:var(--muted);">Aguardando liquidação</span>
+                                    }
+                                </td>
+                                <td class="alinhar-direita">
+                                    @if (fatura.Status is StatusFatura.Pendente or StatusFatura.Atrasada)
+                                    {
+                                        <button type="button" class="btn btn-ghost" style="height:28px;padding:0 8px;" @onclick="() => AbrirPagamentoAsync(fatura)">
+                                            Pagar
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span style="font-size:10px;color:var(--muted);">Liquidada</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="table-footer">
+                    <span>@listaFaturas.Count faturas listadas</span>
+                    <strong>Total previsto: @listaFaturas.Sum(f => f.ValorPrevisto).ToString("C2")</strong>
+                </div>
+            </div>
+        }
+    }
+}
+else
+{
+    @if (_mensagemErro is not null && _paginaContas is null)
+    {
+        <div class="card state-card">
+            <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+                <Icon Name="alert" Size="28" />
+            </div>
+            <h2>Não foi possível carregar as contas</h2>
+            <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+            <button type="button" class="btn btn-primary" @onclick="CarregarContasAsync">
+                <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+            </button>
+        </div>
+    }
+    else if (_paginaContas is null)
+    {
+        <LoadingState Mensagem="Carregando contas cadastradas..." Subtitulo="Recuperando despesas fixas recorrentes." />
+    }
+    else if (_paginaContas.Itens.Count == 0)
+    {
+        <div class="card state-card">
+            <div class="empty-icon"><Icon Name="bills" Size="28" /></div>
+            <h2>Nenhuma conta cadastrada</h2>
+            <p>Cadastre suas despesas fixas, como condomínio, aluguel, internet, seguros, etc.</p>
+            <button type="button" class="btn btn-primary" @onclick="NovaConta">
+                <Icon Name="plus" Size="16" /><span>Cadastrar primeira conta</span>
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome da conta</th>
+                        <th class="alinhar-direita">Valor estimado</th>
+                        <th class="alinhar-centro">Dia vencimento</th>
+                        <th class="alinhar-centro">Recorrência</th>
+                        <th class="alinhar-centro">Categoria</th>
+                        <th class="alinhar-centro">Status</th>
+                        <th>Descrição</th>
+                        <th class="alinhar-direita">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var conta in _paginaContas.Itens)
+                    {
+                        <tr>
+                            <td><strong>@conta.Nome</strong></td>
+                            <td class="alinhar-direita font-bold">@conta.ValorEstimado.ToString("C2")</td>
+                            <td class="alinhar-centro">Dia @conta.DiaVencimento</td>
+                            <td class="alinhar-centro"><span class="badge badge-info">@conta.Recorrencia</span></td>
+                            <td class="alinhar-centro"><span class="badge badge-neutral">@conta.Categoria</span></td>
+                            <td class="alinhar-centro">
+                                <span class="badge @(conta.StatusAtivo ? "badge-positive" : "badge-neutral")">
+                                    @(conta.StatusAtivo ? "Ativo" : "Inativo")
+                                </span>
+                            </td>
+                            <td style="color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;">@conta.Descricao</td>
+                            <td class="alinhar-direita">
+                                <div class="row-actions">
+                                    <button type="button" title="Editar" @onclick="() => EditarConta(conta)"><Icon Name="edit" Size="14" /></button>
+                                    <button type="button" class="danger" title="Remover" @onclick="() => RemoverContaAsync(conta)"><Icon Name="trash" Size="14" /></button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="table-footer">
+                <span>@_paginaContas.Itens.Count contas cadastradas</span>
+            </div>
+        </div>
+    }
+}
+
+<!-- Modal: Registrar Pagamento de Fatura -->
+@if (_faturaEmPagamento is not null && _modeloPagamento is not null)
+{
+    <div class="overlay modal-overlay">
+        <button type="button" class="overlay-close" @onclick="() => _faturaEmPagamento = null"></button>
+        <section class="card modal">
+            <div class="drawer-head">
+                <div>
+                    <span>Registrar liquidação</span>
+                    <h2>Pagar @_faturaEmPagamento.ContaNome</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="() => _faturaEmPagamento = null"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modeloPagamento" OnValidSubmit="ConfirmarPagamentoAsync">
+                <DataAnnotationsValidator />
+                <div class="drawer-body">
+                    <div class="form-grid">
+                        <div class="field">
+                            <span>Valor pago (R$)</span>
+                            <InputNumber @bind-Value="_modeloPagamento.ValorPago" step="0.01" />
+                            <ValidationMessage For="@(() => _modeloPagamento.ValorPago)" />
+                        </div>
+                        <div class="field">
+                            <span>Data do pagamento</span>
+                            <InputDate @bind-Value="_modeloPagamento.Data" />
+                            <ValidationMessage For="@(() => _modeloPagamento.Data)" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <span>Forma de pagamento</span>
+                        <InputSelect @bind-Value="_modeloPagamento.FormaPagamento">
+                            <option value="PIX">PIX</option>
+                            <option value="Boleto">Boleto bancário</option>
+                            <option value="Cartão de Crédito">Cartão de Crédito</option>
+                            <option value="Débito Automático">Débito Automático</option>
+                            <option value="Transferência">Transferência bancária</option>
+                        </InputSelect>
+                    </div>
+
+                    <div class="field">
+                        <span>Descrição (opcional)</span>
+                        <InputText @bind-Value="_modeloPagamento.Descricao" placeholder="Código de autenticação ou nota..." />
+                    </div>
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _faturaEmPagamento = null">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_processando">
+                        @(_processando ? "Confirmando..." : "Confirmar pagamento")
+                    </button>
+                </div>
+            </EditForm>
+        </section>
+    </div>
+}
+
+<!-- Drawer: Nova / Editar Conta -->
+@if (_modeloConta is not null)
+{
+    <div class="overlay">
+        <button type="button" class="overlay-close" @onclick="CancelarConta"></button>
+        <div class="drawer">
+            <div class="drawer-head">
+                <div>
+                    <span>Cadastro de despesa fixa</span>
+                    <h2>@(_editandoContaId is null ? "Nova conta" : "Editar conta")</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="CancelarConta"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modeloConta" OnValidSubmit="SalvarContaAsync" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+                <DataAnnotationsValidator />
+                <div class="drawer-body">
+                    <div class="field">
+                        <span>Nome da conta</span>
+                        <InputText @bind-Value="_modeloConta.Nome" placeholder="Ex: Condomínio, Aluguel, Internet..." />
+                        <ValidationMessage For="@(() => _modeloConta.Nome)" />
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <span>Valor estimado (R$)</span>
+                            <InputNumber @bind-Value="_modeloConta.ValorEstimado" step="0.01" />
+                            <ValidationMessage For="@(() => _modeloConta.ValorEstimado)" />
+                        </div>
+                        <div class="field">
+                            <span>Dia de vencimento</span>
+                            <InputNumber @bind-Value="_modeloConta.DiaVencimento" min="1" max="31" />
+                            <ValidationMessage For="@(() => _modeloConta.DiaVencimento)" />
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <span>Recorrência</span>
+                            <InputSelect @bind-Value="_modeloConta.Recorrencia">
+                                @foreach (var rec in Enum.GetValues<Recorrencia>())
+                                {
+                                    <option value="@rec">@rec</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="field">
+                            <span>Categoria</span>
+                            <InputText @bind-Value="_modeloConta.Categoria" placeholder="Ex: Moradia, Transporte..." />
+                        </div>
+                    </div>
+
+                    @if (_modeloConta.Recorrencia == Recorrencia.Parcelada)
+                    {
+                        <div class="field">
+                            <span>Número de parcelas</span>
+                            <InputNumber @bind-Value="_modeloConta.NumeroParcelas" min="1" max="360" />
+                        </div>
+                    }
+
+                    <div class="field">
+                        <span>Descrição</span>
+                        <InputTextArea @bind-Value="_modeloConta.Descricao" placeholder="Detalhes ou contrato..." />
+                    </div>
+
+                    @if (_editandoContaId is not null)
+                    {
+                        <div class="field" style="margin-top:6px;">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" checked="@_modeloConta.Ativo" @onchange="e => _modeloConta.Ativo = e.Value is bool m && m" />
+                                <span>Conta ativa</span>
+                            </label>
+                        </div>
+                    }
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelarConta">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_processando">
+                        @(_processando ? "Salvando..." : "Salvar conta")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private string _abaAtiva = "faturas";
+    private PaginaResultado<FaturaResponse>? _paginaFaturas;
+    private PaginaResultado<ContaResponse>? _paginaContas;
+    private string _filtroStatus = string.Empty;
+    private string _buscaFatura = string.Empty;
+    private string? _mensagemErro;
+    private string? _mensagemSucesso;
+    private bool _processando;
+
+    private FaturaResponse? _faturaEmPagamento;
+    private FormPagamento? _modeloPagamento;
+
+    private Guid? _editandoContaId;
+    private FormConta? _modeloConta;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarFaturasAsync();
+        await CarregarContasAsync();
+    }
+
+    private async Task CarregarFaturasAsync()
+    {
+        _mensagemErro = null;
+        try
+        {
+            StatusFatura? status = Enum.TryParse<StatusFatura>(_filtroStatus, out var s) ? s : null;
+            _paginaFaturas = await ApiClient.ListarFaturasAsync(status: status);
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private async Task CarregarContasAsync()
+    {
+        try
+        {
+            _paginaContas = await ApiClient.ListarContasAsync();
+        }
+        catch { }
+    }
+
+    private async Task GerarFaturasAsync()
+    {
+        _processando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            var resposta = await ApiClient.GerarFaturasAsync();
+            _mensagemSucesso = $"{resposta.FaturasCriadas} faturas geradas com sucesso.";
+            await CarregarFaturasAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private void AbrirPagamentoAsync(FaturaResponse fatura)
+    {
+        _faturaEmPagamento = fatura;
+        _modeloPagamento = new FormPagamento
+        {
+            ValorPago = fatura.ValorPrevisto,
+            Data = DateOnly.FromDateTime(DateTime.Today),
+            FormaPagamento = "PIX"
+        };
+    }
+
+    private async Task ConfirmarPagamentoAsync()
+    {
+        if (_faturaEmPagamento is null || _modeloPagamento is null) return;
+        _processando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.PagarFaturaAsync(_faturaEmPagamento.Id, new PagarFaturaRequest(
+                _modeloPagamento.ValorPago,
+                _modeloPagamento.Data,
+                _modeloPagamento.FormaPagamento,
+                _modeloPagamento.Descricao));
+            _mensagemSucesso = $"Pagamento da fatura de {_faturaEmPagamento.ContaNome} confirmado!";
+            _faturaEmPagamento = null;
+            _modeloPagamento = null;
+            await CarregarFaturasAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private void NovaConta()
+    {
+        _editandoContaId = null;
+        _modeloConta = new FormConta();
+    }
+
+    private void EditarConta(ContaResponse c)
+    {
+        _editandoContaId = c.Id;
+        _modeloConta = new FormConta
+        {
+            Nome = c.Nome,
+            ValorEstimado = c.ValorEstimado,
+            DiaVencimento = c.DiaVencimento,
+            Recorrencia = c.Recorrencia,
+            NumeroParcelas = c.NumeroParcelas,
+            Categoria = c.Categoria,
+            Descricao = c.Descricao,
+            Ativo = c.StatusAtivo
+        };
+    }
+
+    private void CancelarConta()
+    {
+        _modeloConta = null;
+        _editandoContaId = null;
+    }
+
+    private async Task SalvarContaAsync()
+    {
+        if (_modeloConta is null) return;
+        _processando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            if (_editandoContaId is null)
+            {
+                await ApiClient.CriarContaAsync(new CriarContaRequest(
+                    _modeloConta.Nome,
+                    _modeloConta.ValorEstimado,
+                    _modeloConta.DiaVencimento,
+                    _modeloConta.Recorrencia,
+                    _modeloConta.Recorrencia == Recorrencia.Parcelada ? _modeloConta.NumeroParcelas : null,
+                    _modeloConta.Categoria,
+                    _modeloConta.Descricao));
+                _mensagemSucesso = "Conta criada com sucesso!";
+            }
+            else
+            {
+                await ApiClient.AtualizarContaAsync(_editandoContaId.Value, new AtualizarContaRequest(
+                    _modeloConta.Nome,
+                    _modeloConta.ValorEstimado,
+                    _modeloConta.DiaVencimento,
+                    _modeloConta.Recorrencia,
+                    _modeloConta.Recorrencia == Recorrencia.Parcelada ? _modeloConta.NumeroParcelas : null,
+                    _modeloConta.Categoria,
+                    _modeloConta.Descricao,
+                    _modeloConta.Ativo));
+                _mensagemSucesso = "Conta atualizada com sucesso!";
+            }
+            _modeloConta = null;
+            _editandoContaId = null;
+            await CarregarContasAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private async Task RemoverContaAsync(ContaResponse c)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.RemoverContaAsync(c.Id);
+            _mensagemSucesso = $"Conta {c.Nome} removida com sucesso.";
+            await CarregarContasAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private sealed class FormPagamento
+    {
+        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "O valor deve ser positivo.")]
+        public decimal ValorPago { get; set; }
+
+        public DateOnly Data { get; set; }
+
+        public string FormaPagamento { get; set; } = "PIX";
+
+        public string? Descricao { get; set; }
+    }
+
+    private sealed class FormConta
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe o nome da conta.")]
+        public string Nome { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Range(0, double.MaxValue, ErrorMessage = "O valor não pode ser negativo.")]
+        public decimal ValorEstimado { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Range(1, 31, ErrorMessage = "O dia de vencimento deve estar entre 1 e 31.")]
+        public int DiaVencimento { get; set; } = 10;
+
+        public Recorrencia Recorrencia { get; set; } = Recorrencia.Mensal;
+
+        public int? NumeroParcelas { get; set; }
+
+        public string? Categoria { get; set; }
+
+        public string? Descricao { get; set; }
+
+        public bool Ativo { get; set; } = true;
+    }
+}

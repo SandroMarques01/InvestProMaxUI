@@ -1,0 +1,325 @@
+@page "/ativos"
+@inject IInvestProMaxApiClient ApiClient
+@inject NavigationManager Navegacao
+
+<header class="page-header">
+    <div>
+        <div class="breadcrumb">InvestProMax <Icon Name="chevron" Size="12" /> Estrutura patrimonial</div>
+        <h1>Ativos</h1>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn-primary" @onclick="Novo">
+            <Icon Name="plus" Size="16" /><span>Novo ativo</span>
+        </button>
+    </div>
+</header>
+
+@if (_mensagemErro is not null)
+{
+    <div class="alerta-erro">@_mensagemErro</div>
+}
+@if (_mensagemSucesso is not null)
+{
+    <div class="alerta-sucesso">@_mensagemSucesso</div>
+}
+
+@if (_mensagemErro is not null && _pagina is null)
+{
+    <div class="card state-card">
+        <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
+            <Icon Name="alert" Size="28" />
+        </div>
+        <h2>Não foi possível carregar os ativos</h2>
+        <p style="max-width: 520px; margin: 8px auto 18px; color: var(--muted); font-size: 12px; line-height: 1.5;">@_mensagemErro</p>
+        <button type="button" class="btn btn-primary" @onclick="CarregarAsync">
+            <Icon Name="refresh" Size="16" /><span>Tentar novamente</span>
+        </button>
+    </div>
+}
+else if (_pagina is null)
+{
+    <LoadingState Mensagem="Carregando ativos..." Subtitulo="Recuperando catálogo de ativos cadastrados." />
+}
+else if (_pagina.Itens.Count == 0)
+{
+    <div class="card state-card">
+        <div class="empty-icon"><Icon Name="assets" Size="28" /></div>
+        <h2>Nenhum ativo cadastrado</h2>
+        <p>Cadastre ativos manuais ou calculados da sua carteira para acompanhamento do patrimônio.</p>
+        <button type="button" class="btn btn-primary" @onclick="Novo">
+            <Icon Name="plus" Size="16" /><span>Cadastrar primeiro ativo</span>
+        </button>
+    </div>
+}
+else
+{
+    <div class="table-shell">
+        <table>
+            <thead>
+                <tr>
+                    <th>Nome do ativo</th>
+                    <th class="alinhar-centro">Tipo</th>
+                    <th class="alinhar-centro">Origem</th>
+                    <th class="alinhar-centro">Papel vinculado</th>
+                    <th class="alinhar-centro">Status</th>
+                    <th>Descrição</th>
+                    <th class="alinhar-direita">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var ativo in _pagina.Itens)
+                {
+                    <tr>
+                        <td><strong>@ativo.Nome</strong></td>
+                        <td class="alinhar-centro">
+                            <span class="badge badge-info">@ativo.TipoAtivo</span>
+                        </td>
+                        <td class="alinhar-centro">
+                            <span class="badge @(ativo.TipoOrigem == TipoOrigemAtivo.Calculado ? "badge-positive" : "badge-neutral")">
+                                @ativo.TipoOrigem
+                            </span>
+                        </td>
+                        <td class="alinhar-centro">
+                            @(ativo.TipoPapelVinculado?.ToString() ?? "–")
+                        </td>
+                        <td class="alinhar-centro">
+                            <span class="badge @(ativo.StatusAtivo ? "badge-positive" : "badge-neutral")">
+                                @(ativo.StatusAtivo ? "Ativo" : "Inativo")
+                            </span>
+                        </td>
+                        <td style="color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;">@ativo.Descricao</td>
+                        <td class="alinhar-direita">
+                            <div class="row-actions">
+                                <button type="button" title="Editar" @onclick="() => Editar(ativo)"><Icon Name="edit" Size="14" /></button>
+                                <button type="button" class="danger" title="Remover" @onclick="() => RemoverAsync(ativo)"><Icon Name="trash" Size="14" /></button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="table-footer">
+            <span>Total de @_pagina.Itens.Count ativos cadastrados</span>
+        </div>
+    </div>
+}
+
+<!-- Drawer: Novo / Editar Ativo -->
+@if (_modelo is not null)
+{
+    <div class="overlay">
+        <button type="button" class="overlay-close" @onclick="Cancelar"></button>
+        <div class="drawer">
+            <div class="drawer-head">
+                <div>
+                    <span>Cadastro de ativo</span>
+                    <h2>@(_editandoId is null ? "Novo ativo" : "Editar ativo")</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="Cancelar"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modelo" OnValidSubmit="SalvarAsync" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+                <DataAnnotationsValidator />
+                
+                <div class="drawer-body">
+                    <div class="field">
+                        <span>Nome do ativo</span>
+                        <InputText @bind-Value="_modelo.Nome" placeholder="Ex: Carteira de Ações, Reserva de Emergência..." />
+                        <ValidationMessage For="@(() => _modelo.Nome)" />
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <span>Tipo de ativo</span>
+                            <InputSelect @bind-Value="_modelo.TipoAtivo">
+                                @foreach (var tipo in Enum.GetValues<TipoAtivo>())
+                                {
+                                    <option value="@tipo">@tipo</option>
+                                }
+                            </InputSelect>
+                        </div>
+
+                        <div class="field">
+                            <span>Origem do valor</span>
+                            <InputSelect @bind-Value="_modelo.TipoOrigem">
+                                @foreach (var origem in Enum.GetValues<TipoOrigemAtivo>())
+                                {
+                                    <option value="@origem">@origem</option>
+                                }
+                            </InputSelect>
+                        </div>
+                    </div>
+
+                    @if (_modelo.TipoOrigem == TipoOrigemAtivo.Calculado)
+                    {
+                        <div class="field">
+                            <span>Tipo de papel vinculado (soma automática da carteira)</span>
+                            <InputSelect @bind-Value="_modelo.TipoPapelVinculado">
+                                <option value="">Todos os tipos de papéis</option>
+                                @foreach (var tipo in Enum.GetValues<TipoPapel>())
+                                {
+                                    <option value="@tipo">@tipo</option>
+                                }
+                            </InputSelect>
+                        </div>
+                    }
+
+                    <div class="field">
+                        <span>Descrição (opcional)</span>
+                        <InputTextArea @bind-Value="_modelo.Descricao" placeholder="Instituição, conta ou objetivo..." />
+                    </div>
+
+                    @if (_editandoId is not null)
+                    {
+                        <div class="field" style="margin-top: 6px;">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" checked="@_modelo.StatusAtivo" @onchange="e => _modelo.StatusAtivo = e.Value is bool m && m" />
+                                <span>Ativo para lançamentos</span>
+                            </label>
+                        </div>
+                    }
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="Cancelar">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                        @(_salvando ? "Salvando..." : "Salvar ativo")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private PaginaResultado<AtivoResponse>? _pagina;
+    private string? _mensagemErro;
+    private string? _mensagemSucesso;
+    private bool _salvando;
+
+    private Guid? _editandoId;
+    private FormAtivo? _modelo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarAsync();
+    }
+
+    private async Task CarregarAsync()
+    {
+        _mensagemErro = null;
+        try
+        {
+            _pagina = await ApiClient.ListarAtivosAsync();
+        }
+        catch (ApiException ex) when (ex.EhNaoAutorizado)
+        {
+            Navegacao.NavigateTo("/login", forceLoad: false);
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private void Novo()
+    {
+        _editandoId = null;
+        _modelo = new FormAtivo();
+    }
+
+    private void Editar(AtivoResponse a)
+    {
+        _editandoId = a.Id;
+        _modelo = new FormAtivo
+        {
+            Nome = a.Nome,
+            TipoAtivo = a.TipoAtivo,
+            TipoOrigem = a.TipoOrigem,
+            TipoPapelVinculado = a.TipoPapelVinculado,
+            Descricao = a.Descricao,
+            StatusAtivo = a.StatusAtivo
+        };
+    }
+
+    private void Cancelar()
+    {
+        _modelo = null;
+        _editandoId = null;
+    }
+
+    private async Task SalvarAsync()
+    {
+        if (_modelo is null) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            if (_editandoId is null)
+            {
+                await ApiClient.CriarAtivoAsync(new CriarAtivoRequest(
+                    _modelo.Nome,
+                    _modelo.TipoAtivo,
+                    _modelo.TipoOrigem,
+                    _modelo.TipoOrigem == TipoOrigemAtivo.Calculado ? _modelo.TipoPapelVinculado : null,
+                    _modelo.Descricao));
+                _mensagemSucesso = "Ativo cadastrado com sucesso!";
+            }
+            else
+            {
+                await ApiClient.AtualizarAtivoAsync(_editandoId.Value, new AtualizarAtivoRequest(
+                    _modelo.Nome,
+                    _modelo.TipoAtivo,
+                    _modelo.TipoOrigem,
+                    _modelo.TipoOrigem == TipoOrigemAtivo.Calculado ? _modelo.TipoPapelVinculado : null,
+                    _modelo.Descricao,
+                    _modelo.StatusAtivo));
+                _mensagemSucesso = "Ativo atualizado com sucesso!";
+            }
+            _modelo = null;
+            _editandoId = null;
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private async Task RemoverAsync(AtivoResponse a)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.RemoverAtivoAsync(a.Id);
+            _mensagemSucesso = $"Ativo {a.Nome} removido com sucesso.";
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+    }
+
+    private sealed class FormAtivo
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe o nome.")]
+        public string Nome { get; set; } = string.Empty;
+
+        public TipoAtivo TipoAtivo { get; set; } = TipoAtivo.RendaVariavel;
+
+        public TipoOrigemAtivo TipoOrigem { get; set; } = TipoOrigemAtivo.Manual;
+
+        public TipoPapel? TipoPapelVinculado { get; set; }
+
+        public string? Descricao { get; set; }
+
+        public bool StatusAtivo { get; set; } = true;
+    }
+}

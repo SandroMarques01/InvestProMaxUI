@@ -1,0 +1,45 @@
+## ==========================================
+## .NET / Visual Studio Build & Temp Artifacts
+## ==========================================
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+.vs/
+.idea/
+
+## ==========================================
+## Arquivos com Segredos, Senhas e Credenciais
+## ==========================================
+# Configurações locais com senhas e strings de conexão
+appsettings*.Development.json
+appsettings*.Development.*.json
+appsettings*.local.json
+appsettings*.Local.json
+appsettings.Production.json
+!appsettings.Development.template.json
+
+# Variáveis de ambiente e certificados
+*.env
+*.env.*
+*.pfx
+*.pem
+*.key
+*.cer
+*.crt
+
+# Planilhas financeiras com dados reais
+*.xlsx
+*.xls
+*.csv
+docs/*.xlsx
+docs/*.xls
+
+# Automações com tokens e chaves reais em produção
+n8n/
+docs/Assistente Cofre de Senhas TelegramPRD.json
+docs/n8n/cofre-senhas-telegram.json
