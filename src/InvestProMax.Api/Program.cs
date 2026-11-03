@@ -13,6 +13,7 @@ using InvestProMax.Infrastructure.Auth;
 using InvestProMax.Infrastructure.Persistence;
 using InvestProMax.Infrastructure.Persistence.Seed;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -172,31 +173,40 @@ builder.Services.AddSwaggerGen(options =>
     options.OperationFilter<SwaggerSecurityRequirementsOperationFilter>();
 });
 
-// --- CORS: preparado para o front-end Blazor WebAssembly (Fase 6, seção 10) chamar a API
-// de uma origem diferente. Política nomeada e restrita por configuração, nunca AllowAnyOrigin
-// em produção — origens permitidas ainda não definidas nesta fase, ver appsettings. ---
+// --- CORS: preparado para o front-end Blazor WebAssembly no Cloudflare Pages e ambiente local ---
 const string PoliticaCors = "FrontEnd";
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(PoliticaCors, policy =>
     {
-        var origensPermitidas = builder.Configuration.GetSection("Cors:OrigensPermitidas").Get<string[]>() ?? [];
+        var origensConfiguradas = builder.Configuration.GetSection("Cors:OrigensPermitidas").Get<string[]>() ?? [];
+        var origensPadrao = new[] { "https://investpromaxui.pages.dev" };
+        var origensFinais = origensConfiguradas.Union(origensPadrao, StringComparer.OrdinalIgnoreCase).ToArray();
+
         if (builder.Environment.IsDevelopment())
         {
-            policy.SetIsOriginAllowed(origin => new Uri(origin).IsLoopback)
+            policy.SetIsOriginAllowed(origin => new Uri(origin).IsLoopback || origensFinais.Contains(origin, StringComparer.OrdinalIgnoreCase))
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         }
         else
         {
-            policy.WithOrigins(origensPermitidas).AllowAnyHeader().AllowAnyMethod();
+            policy.WithOrigins(origensFinais)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
         }
     });
 });
 
 var app = builder.Build();
 
-// --- Migrations automáticas + seed só em Development; produção aplica migration via pipeline (seção 13, em aberto) ---
+// --- Forwarded Headers para proxy reverso (Render, Cloudflare, Fly etc.) ---
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
+// --- Migrations automáticas + seed só em Development; produção aplica migration via pipeline ---
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
@@ -269,9 +279,6 @@ if (app.Environment.IsDevelopment())
         }
         await DbSeeder.SeedUsuarioDevAsync(db, passwordHasher, app.Configuration);
     }
-
-    app.UseSwagger();
-    app.UseSwaggerUI();
 }
 else
 {
@@ -279,6 +286,17 @@ else
     // com este host, mesmo que alguém digite a URL sem "https://" — complementa o
     // UseHttpsRedirection abaixo, que só age depois que a requisição já chegou.
     app.UseHsts();
+}
+
+// Swagger habilitado em desenvolvimento ou sob demanda em produção via configuração/variável de ambiente
+var habilitarSwagger = app.Environment.IsDevelopment() ||
+                       app.Configuration.GetValue<bool>("Swagger:Habilitado") ||
+                       app.Configuration.GetValue<bool>("ENABLE_SWAGGER");
+
+if (habilitarSwagger)
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -290,6 +308,10 @@ app.UseCors(PoliticaCors);
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Health check endpoint para monitoramento do Render e testes locais
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }))
+   .AllowAnonymous();
 
 app.MapControllers();
 

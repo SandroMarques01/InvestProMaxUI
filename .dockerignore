@@ -1,0 +1,46 @@
+# Controle de versão / IDE
+.git
+.gitignore
+.gitattributes
+.vs
+.vscode
+.idea
+*.user
+*.slnLaunch*
+*.slnlaunch
+
+# Artefatos de build
+**/bin
+**/obj
+
+# Projetos que não fazem parte da API
+src/InvestProMax.Web
+src/InvestProMax.SharedUI
+src/InvestProMax.Maui
+tests
+
+# Docs, automações e dados pessoais
+docs
+n8n
+README.md
+*.md
+*.xlsx
+*.xls
+*.csv
+start-dev.ps1
+
+# Segredos / configs locais (nunca vão para a imagem)
+**/appsettings.Development.json
+**/appsettings.Development.*.json
+**/appsettings.*.local.json
+**/appsettings.Production.json
+**/*.env
+**/.env*
+**/*.pfx
+**/*.pem
+**/*.key
+
+# Docker
+Dockerfile
+.dockerignore
+

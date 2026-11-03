@@ -34,26 +34,41 @@ public static class DependencyInjection
         {
             var normalizedSupabase = NormalizePostgresConnectionString(supabaseConnectionString);
 
-            services.AddDbContext<LocalDbContext>(options =>
-                options.UseSqlServer(connectionString));
-
-            services.AddDbContext<SupabaseDbContext>((sp, options) =>
+            // Se connectionString (InvestProMaxDb) foi informada, registra o LocalDbContext (fallback no localhost)
+            // Se for nula ou vazia (ex: no Render/Docker Linux onde o SQL Server LocalDB não existe),
+            // registra apenas o SupabaseDbContext como banco único e principal.
+            if (!string.IsNullOrWhiteSpace(connectionString))
             {
-                options.UseNpgsql(normalizedSupabase);
-                options.AddInterceptors(
-                    sp.GetRequiredService<ConexaoFalhaInterceptor>(),
-                    sp.GetRequiredService<ReplicaSaveChangesInterceptor>());
-            });
+                services.AddDbContext<LocalDbContext>(options =>
+                    options.UseSqlServer(connectionString));
 
-            services.AddHostedService<DatabaseHealthMonitorHostedService>();
+                services.AddDbContext<SupabaseDbContext>((sp, options) =>
+                {
+                    options.UseNpgsql(normalizedSupabase);
+                    options.AddInterceptors(
+                        sp.GetRequiredService<ConexaoFalhaInterceptor>(),
+                        sp.GetRequiredService<ReplicaSaveChangesInterceptor>());
+                });
 
-            // O contexto principal injetado nos repositórios (InvestProMaxDbContext) é resolvido dinamicamente:
-            // Por padrão usa Supabase (banco principal); se estiver inacessível, cai automaticamente para LocalDB (localhost).
-            services.AddScoped<InvestProMaxDbContext>(sp =>
+                services.AddHostedService<DatabaseHealthMonitorHostedService>();
+
+                // O contexto principal injetado nos repositórios (InvestProMaxDbContext) é resolvido dinamicamente:
+                // Por padrão usa Supabase (banco principal); se estiver inacessível, cai automaticamente para LocalDB (localhost).
+                services.AddScoped<InvestProMaxDbContext>(sp =>
+                {
+                    var dbProvider = sp.GetRequiredService<IDatabaseProviderService>();
+                    return dbProvider.GetActiveDbContext(sp);
+                });
+            }
+            else
             {
-                var dbProvider = sp.GetRequiredService<IDatabaseProviderService>();
-                return dbProvider.GetActiveDbContext(sp);
-            });
+                // Modo Produção / Docker (sem LocalDB)
+                services.AddDbContext<SupabaseDbContext>(options =>
+                    options.UseNpgsql(normalizedSupabase));
+
+                services.AddScoped<InvestProMaxDbContext>(sp =>
+                    sp.GetRequiredService<SupabaseDbContext>());
+            }
         }
         else if (IsPostgreSql(connectionString))
         {
