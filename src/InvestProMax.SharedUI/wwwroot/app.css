@@ -344,7 +344,8 @@ tfoot tr, tfoot td, tfoot th { background: var(--table-foot); font-weight: 700; 
 .login-aside p { color: #b9c9c0; max-width: 440px; line-height: 1.6; font-size: 13px; }
 .login-aside small { color: #80998b; font-size: 11px; }
 .login-card { width: 420px; max-width: calc(100% - 40px); margin: auto; padding: 34px; border: 0; box-shadow: none; display: flex; flex-direction: column; gap: 18px; }
-.login-card > .logo { display: none; }
+.login-card > .logo { display: none; color: var(--ink); }
+.login-card > .logo strong span { color: var(--primary); }
 .login-card h1 { font-size: 24px; margin: 0; font-weight: 700; color: var(--ink); }
 .login-card p { color: var(--muted); margin: 6px 0 0; font-size: 12px; }
 .login-card input { height: 42px; width: 100%; }
@@ -709,9 +710,20 @@ tfoot tr, tfoot td, tfoot th { background: var(--table-foot); font-weight: 700; 
   body { font-size: 12px; }
   .sidebar { display: none; }
   .main-content, .app-shell.sidebar-collapsed .main-content, .main-content.collapsed { margin: 0; width: 100%; padding: 18px 14px 92px; }
-  .mobile-nav { position: fixed; display: grid; grid-template-columns: repeat(5, 1fr); z-index: 50; inset: auto 0 0; height: 68px; background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -6px 24px rgba(15,61,34,.08); padding-bottom: env(safe-area-inset-bottom); }
+  .mobile-nav { position: fixed; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; scrollbar-width: none; z-index: 50; inset: auto 0 0; height: 68px; background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -6px 24px rgba(15,61,34,.08); padding-bottom: env(safe-area-inset-bottom); }
   .mobile-nav a, .mobile-nav button { border: 0; background: transparent; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 9px; font-weight: 500; text-decoration: none !important; }
   .mobile-nav a.active, .mobile-nav button.active { color: var(--primary); font-weight: 600; }
+  .mobile-nav::-webkit-scrollbar { display: none; }
+  .mobile-nav a, .mobile-nav button { flex: 0 0 20%; min-width: 64px; scroll-snap-align: start; }
+  .donut-wrap, .pizza-chart-wrap { flex-direction: column; gap: 16px; min-height: 0; }
+  .chart-legend { width: 100%; min-width: 0; }
+  .chart-legend > div { grid-template-columns: 8px 1fr auto; }
+  .card, .allocation, .dividends-chart, .capital-chart, .upcoming { min-width: 0; max-width: 100%; }
+  .chart-with-grid, .bar-chart, .bars-stage, .bars { max-width: 100%; overflow-x: auto; }
+  .bars-stage, .bars { gap: 3px; }
+  .stack { width: 12px; }
+  .evolucao-chart-card { overflow-x: auto; }
+  .evolucao-chart-card svg { max-width: 100%; height: auto; }
   .page-header { margin-bottom: 16px; align-items: center; min-height: 44px; }
   .page-header h1 { font-size: 21px; margin-top: 4px; }
   .breadcrumb { font-size: 9px; }
