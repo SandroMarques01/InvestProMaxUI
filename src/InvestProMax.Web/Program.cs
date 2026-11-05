@@ -15,17 +15,23 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddSharedUI();
 builder.Services.AddScoped<InvestProMax.SharedUI.Auth.ITokenStorage, LocalStorageTokenStorage>();
 
-// ASSUNÇÃO SINALIZADA (decisão explícita do dono do produto, 2026-09-12): aplicação caseira,
-// sem exigência de mitigação de XSS além do que o próprio Blazor já dá por padrão — refresh
-// token fica em localStorage (ver comentário em LocalStorageTokenStorage.cs). Se algum dia
-// isso precisar mudar para cookie HttpOnly, a Api também precisa mudar (Set-Cookie em vez de
-// devolver o token no corpo JSON) — não é só troca de storage no head.
+// Registra o cliente HTTP tipado com a URL-base configurada centralizadamente
 builder.Services.AddHttpClient<IInvestProMaxApiClient, InvestProMaxApiClient>(cliente =>
 {
-    // ASSUNÇÃO SINALIZADA: a especificação não define a URL da Api em produção. Lida de
-    // wwwroot/appsettings.json ("ApiBaseUrl") pra não precisar recompilar por ambiente — ajuste
-    // esse arquivo (ou o appsettings.Development.json) para onde a Api realmente estiver.
-    cliente.BaseAddress = new Uri(builder.Configuration["ApiBaseUrl"] ?? "https://localhost:7199/");
+    var apiBaseUrl = builder.Configuration["ApiBaseUrl"];
+    if (string.IsNullOrWhiteSpace(apiBaseUrl))
+    {
+        apiBaseUrl = builder.HostEnvironment.IsDevelopment()
+            ? "https://localhost:7199/"
+            : "https://investpromax-api-902552407127.us-central1.run.app/";
+    }
+
+    if (!apiBaseUrl.EndsWith('/'))
+    {
+        apiBaseUrl += "/";
+    }
+
+    cliente.BaseAddress = new Uri(apiBaseUrl);
 });
 
 // Datas dd/MM/yyyy e números no padrão brasileiro, independente do idioma do navegador.

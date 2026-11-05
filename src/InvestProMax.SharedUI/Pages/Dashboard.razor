@@ -394,7 +394,7 @@ else
         }
         catch (HttpRequestException)
         {
-            _mensagemErro = "Não foi possível conectar ao servidor da API (https://localhost:7199). Verifique se o back-end está em execução.";
+            _mensagemErro = $"Não foi possível conectar ao servidor da API ({ApiClient.UrlApi}). Verifique se o back-end está em execução.";
         }
         catch (Exception ex)
         {

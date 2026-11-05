@@ -54,7 +54,7 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
         }
         catch (Exception ex)
         {
-            throw new ApiException(0, "Não foi possível conectar ao servidor da API (https://localhost:7199). Verifique se o back-end está em execução.", ex);
+            throw new ApiException(0, $"Não foi possível conectar ao servidor da API ({UrlApi}). Verifique se o back-end está em execução.", ex);
         }
     }
 
@@ -257,7 +257,7 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
     public Task<StatusMongoResponse> ObterStatusMongoAsync(CancellationToken ct = default) =>
         ObterAsync<StatusMongoResponse>("api/configuracao/backup/mongo/status", ct);
 
-    public string UrlApi => _http.BaseAddress?.ToString().TrimEnd('/') ?? "https://localhost:7199";
+    public string UrlApi => _http.BaseAddress?.ToString().TrimEnd('/') ?? string.Empty;
 
     public Task<InfoAmbienteResponse> ObterInfoAmbienteAsync(CancellationToken ct = default) =>
         ObterAsync<InfoAmbienteResponse>("api/configuracao/info-ambiente", ct);
@@ -350,7 +350,7 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
         }
         catch (Exception ex)
         {
-            throw new ApiException(0, "Não foi possível conectar ao servidor da API (https://localhost:7199). Verifique se o back-end está em execução.", ex);
+            throw new ApiException(0, $"Não foi possível conectar ao servidor da API ({UrlApi}). Verifique se o back-end está em execução.", ex);
         }
     }
 
