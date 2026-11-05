@@ -164,7 +164,7 @@
                 <NavLink href="contas-a-pagar"><Icon Name="bills" /><span>Contas</span></NavLink>
                 <NavLink href="segmentos"><Icon Name="segments" /><span>Segmentos</span></NavLink>
                 <NavLink href="configuracoes"><Icon Name="settings" /><span>Config.</span></NavLink>
-                <button type="button" class="mobile-user-btn" @onclick="AlternarMenuUsuario">
+                <button type="button" class="mobile-user-btn" @onclick="IrParaPerfilUsuario">
                     <div class="avatar" style="width: 22px; height: 22px; font-size: 9px;">@ObterIniciais(context.User.Identity?.Name)</div>
                     <span>Conta</span>
                 </button>
@@ -306,6 +306,12 @@
     {
         _menuUsuarioAberto = false;
         Navegacao.NavigateTo("/configuracoes?aba=conta");
+    }
+
+    private void IrParaPerfilUsuario()
+    {
+        _menuUsuarioAberto = false;
+        Navegacao.NavigateTo("/configuracoes?aba=perfil");
     }
 
     private void IrParaGerenciarUsuarios()

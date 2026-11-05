@@ -12,6 +12,9 @@
 </header>
 
 <div class="subnav">
+    <button type="button" class="@(_abaAtiva == "perfil" ? "active" : "")" @onclick="@(() => _abaAtiva = "perfil")">
+        Opções do Usuário
+    </button>
     <button type="button" class="@(_abaAtiva == "importacao" ? "active" : "")" @onclick="@(() => _abaAtiva = "importacao")">
         Importação e backup
     </button>
@@ -36,6 +39,64 @@
 @if (_mensagemSucesso is not null)
 {
     <div class="alerta-sucesso">@_mensagemSucesso</div>
+}
+
+@if (_abaAtiva == "perfil")
+{
+    <section class="card" style="max-width: 480px; padding: 0; overflow: hidden;">
+        <div class="user-popover-head">
+            <div class="avatar avatar-lg">@ObterIniciais(AuthState.NomeUsuario)</div>
+            <div class="user-popover-info">
+                <div class="user-popover-name">@(AuthState.NomeUsuario ?? "Usuário")</div>
+                <div class="user-popover-sub">InvestProMax</div>
+                <span class="user-role-badge">@(EhAdmin ? "Administrador" : "Usuário")</span>
+            </div>
+        </div>
+
+        <div class="user-popover-menu">
+            <button type="button" class="user-popover-item" @onclick="AlternarTemaAsync">
+                <Icon Name="@(_temaEscuro ? "sun" : "moon")" Size="16" />
+                <div class="user-popover-item-body">
+                    <span>@(_temaEscuro ? "Tema claro" : "Tema escuro")</span>
+                    <small>Alternar para visualização @(_temaEscuro ? "clara" : "escura")</small>
+                </div>
+            </button>
+
+            <button type="button" class="user-popover-item" @onclick="@(() => _abaAtiva = "conta")">
+                <Icon Name="settings" Size="16" />
+                <div class="user-popover-item-body">
+                    <span>Trocar de senha</span>
+                    <small>Atualizar credenciais de acesso</small>
+                </div>
+            </button>
+
+            <button type="button" class="user-popover-item" @onclick="@(() => _abaAtiva = "conta")">
+                <Icon Name="user" Size="16" />
+                <div class="user-popover-item-body">
+                    <span>Minha conta / E-mail</span>
+                    <small>Gerenciar dados cadastrais</small>
+                </div>
+            </button>
+
+            @if (EhAdmin)
+            {
+                <button type="button" class="user-popover-item" @onclick="@(() => _abaAtiva = "usuarios")">
+                    <Icon Name="assets" Size="16" />
+                    <div class="user-popover-item-body">
+                        <span>Gerenciar usuários</span>
+                        <small>Criar e administrar contas</small>
+                    </div>
+                </button>
+            }
+        </div>
+
+        <button type="button" class="user-popover-item logout-item" @onclick="SairAsync">
+            <Icon Name="logout" Size="16" />
+            <div class="user-popover-item-body">
+                <span>Sair da aplicação</span>
+            </div>
+        </button>
+    </section>
 }
 
 @if (_abaAtiva == "importacao")
@@ -580,6 +641,57 @@ else if (_abaAtiva == "ambiente")
     public string? AbaQuery { get; set; }
 
     private string _abaAtiva = "importacao";
+    private bool _temaEscuro;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var tema = await Js.InvokeAsync<string>("investProMaxGetTheme");
+                _temaEscuro = string.Equals(tema, "dark", StringComparison.OrdinalIgnoreCase);
+                StateHasChanged();
+            }
+            catch
+            {
+                // Ignora caso o script não esteja disponível
+            }
+        }
+    }
+
+    private async Task AlternarTemaAsync()
+    {
+        _temaEscuro = !_temaEscuro;
+        var novoTema = _temaEscuro ? "dark" : "light";
+        try
+        {
+            await Js.InvokeVoidAsync("investProMaxSetTheme", novoTema);
+        }
+        catch
+        {
+            // Ignora falha de JS interop
+        }
+    }
+
+    private async Task SairAsync()
+    {
+        await ApiClient.LogoutAsync();
+        Navegacao.NavigateTo("/login", forceLoad: false);
+    }
+
+    private static string ObterIniciais(string? nome)
+    {
+        if (string.IsNullOrWhiteSpace(nome)) return "US";
+        var partes = nome.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (partes.Length >= 2)
+        {
+            return $"{char.ToUpperInvariant(partes[0][0])}{char.ToUpperInvariant(partes[1][0])}";
+        }
+        return nome.Length >= 2
+            ? nome[..2].ToUpperInvariant()
+            : nome.ToUpperInvariant();
+    }
     private bool _processando;
     private InfoAmbienteResponse? _infoAmbiente;
     private bool _carregandoAmbiente;
