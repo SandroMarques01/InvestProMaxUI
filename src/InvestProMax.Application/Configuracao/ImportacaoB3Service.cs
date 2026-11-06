@@ -47,7 +47,11 @@ public sealed class ImportacaoB3Service : IImportacaoB3Service
         // e as planilhas da B3 podem vir em ordem decrescente de data.
         var linhas = _reader.Ler(planilha)
             .Select((linha, indice) => (linha, indice))
-            .OrderBy(x => x.linha.Data).ThenBy(x => x.indice)
+            .OrderBy(x => x.linha.Data)
+            .ThenBy(x => x.linha.Movimentacao.Trim() == TransferenciaLiquidacao
+                         && ClassificadorMovimentacaoB3.DirecaoPorEntradaSaida(x.linha.EntradaSaida) != TipoTransacao.Compra
+                         && x.linha.PrecoUnitario is null ? 0 : 1)
+            .ThenBy(x => x.indice)
             .Select(x => x.linha)
             .ToList();
 

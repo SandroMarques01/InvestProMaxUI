@@ -239,4 +239,48 @@ public class ImportacaoB3ServiceTests
         dividendos.Should().ContainSingle().Which.TipoDividendo.Should().Be(TipoDividendo.Aluguel);
         resposta.LinhasIgnoradasNaoReconhecidas.Should().Be(1);
     }
+
+    [Fact]
+    public async Task Saida_e_devolucao_no_mesmo_dia_com_credito_antes_do_debito_no_arquivo_processa_saida_primeiro()
+    {
+        var mesmaData = new DateOnly(2026, 9, 24);
+        _reader.Setup(r => r.Ler(It.IsAny<Stream>())).Returns(new List<LinhaExtratoB3>
+        {
+            LinhaAluguel("Credito", mesmaData, 109, 38.86m),
+            LinhaAluguel("Debito", mesmaData, 109, null)
+        });
+        _papelRepository.Setup(r => r.ObterPorCodigoAsync(_usuarioId, "BBSE3", default)).ReturnsAsync((Papel?)null);
+
+        List<MovimentoAluguel>? movimentos = null;
+        _movimentoAluguelRepository.Setup(r => r.AdicionarEmLoteAsync(It.IsAny<IEnumerable<MovimentoAluguel>>(), default))
+            .Callback<IEnumerable<MovimentoAluguel>, CancellationToken>((m, _) => movimentos = m.ToList())
+            .Returns(Task.CompletedTask);
+
+        var resposta = await _sut.ImportarAsync(new MemoryStream());
+
+        resposta.TransacoesCriadas.Should().Be(0);
+        resposta.MovimentosAluguelCriados.Should().Be(2);
+        movimentos!.Select(m => m.Tipo).Should().Equal(TipoMovimentoAluguel.Saida, TipoMovimentoAluguel.Devolucao);
+    }
+
+    [Fact]
+    public void Hash_de_linha_importada_independe_da_cultura_da_thread()
+    {
+        var linha = new LinhaExtratoB3("Credito", new DateOnly(2026, 10, 7), "Transferência - Liquidação", "GOGL34 - ALPHABET INC.", 36m, 144.35m, 5196.6m);
+        var culturaOriginal = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+            var hashPtBr = HashDeLinhaImportada.CalcularParaLinhaB3(linha);
+
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            var hashInvariant = HashDeLinhaImportada.CalcularParaLinhaB3(linha);
+
+            hashInvariant.Should().Be(hashPtBr);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = culturaOriginal;
+        }
+    }
 }
