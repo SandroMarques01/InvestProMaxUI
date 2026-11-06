@@ -203,5 +203,44 @@ public class DashboardServiceTests
         resultado.AlocacaoPorTipoPapel[0].TipoPapel.Should().Be(TipoPapel.Acao);
         resultado.AlocacaoPorTipoPapel[0].Valor.Should().Be(100m * 40m);
     }
-}
 
+    [Fact]
+    public async Task TopPapeis_retorna_ate_10_papeis_ordenados_por_valor_total_atual_decrescente_com_dividendos()
+    {
+        var papel1Id = Guid.NewGuid();
+        var papel2Id = Guid.NewGuid();
+
+        var papel1 = new Papel
+        {
+            Id = papel1Id, UsuarioId = _usuarioId, Codigo = "VALE3", TipoPapel = TipoPapel.Acao, CotacaoAtual = 60m,
+            Transacoes = [new() { TipoTransacao = TipoTransacao.Compra, Quantidade = 50, ValorUnitario = 50m, Data = new DateOnly(2026, 1, 1) }]
+        };
+        var papel2 = new Papel
+        {
+            Id = papel2Id, UsuarioId = _usuarioId, Codigo = "PETR4", TipoPapel = TipoPapel.Acao, CotacaoAtual = 40m,
+            Transacoes = [new() { TipoTransacao = TipoTransacao.Compra, Quantidade = 100, ValorUnitario = 30m, Data = new DateOnly(2026, 1, 1) }]
+        };
+
+        _papelRepository.Setup(r => r.ListarTodosDoUsuarioAsync(_usuarioId, default))
+            .ReturnsAsync((IReadOnlyList<Papel>)[papel1, papel2]);
+
+        _dividendoRepository.Setup(r => r.ListarTodosDoUsuarioAsync(_usuarioId, default))
+            .ReturnsAsync((IReadOnlyList<Dividendo>)
+            [
+                new() { PapelId = papel2Id, ValorRecebido = 150m, Data = new DateOnly(2026, 3, 1) },
+                new() { PapelId = papel2Id, ValorRecebido = 200m, Data = new DateOnly(2026, 6, 1) },
+                new() { PapelId = papel1Id, ValorRecebido = 90m, Data = new DateOnly(2026, 4, 1) }
+            ]);
+
+        var resultado = await _sut.ObterAsync();
+
+        resultado.TopPapeis.Should().NotBeNull();
+        resultado.TopPapeis.Should().HaveCount(2);
+        resultado.TopPapeis![0].Codigo.Should().Be("PETR4");
+        resultado.TopPapeis[0].ValorTotalAtual.Should().Be(4000m);
+        resultado.TopPapeis[0].DividendosTotal.Should().Be(350m);
+        resultado.TopPapeis[1].Codigo.Should().Be("VALE3");
+        resultado.TopPapeis[1].ValorTotalAtual.Should().Be(3000m);
+        resultado.TopPapeis[1].DividendosTotal.Should().Be(90m);
+    }
+}

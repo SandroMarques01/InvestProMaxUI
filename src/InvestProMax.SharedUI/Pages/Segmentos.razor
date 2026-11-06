@@ -23,7 +23,7 @@
     <div class="alerta-sucesso">@_mensagemSucesso</div>
 }
 
-@if (_mensagemErro is not null && _pagina is null)
+@if (_mensagemErro is not null && _segmentos is null)
 {
     <div class="card state-card">
         <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
@@ -36,11 +36,11 @@
         </button>
     </div>
 }
-else if (_pagina is null)
+else if (_segmentos is null)
 {
     <LoadingState Mensagem="Carregando segmentos..." Subtitulo="Recuperando setores e categorias cadastradas." />
 }
-else if (_pagina.Itens.Count == 0)
+else if (_segmentos.Count == 0)
 {
     <div class="card state-card">
         <div class="empty-icon"><Icon Name="segments" Size="28" /></div>
@@ -53,18 +53,27 @@ else if (_pagina.Itens.Count == 0)
 }
 else
 {
+    var listaOrdenada = ObterItensOrdenados().ToList();
+    var totalRegistros = listaOrdenada.Count;
+    var totalPaginas = Math.Max(1, (int)Math.Ceiling((double)totalRegistros / TamanhoPagina));
+    if (_paginaAtual > totalPaginas) _paginaAtual = totalPaginas;
+
+    var inicio = ((_paginaAtual - 1) * TamanhoPagina) + 1;
+    var fim = Math.Min(_paginaAtual * TamanhoPagina, totalRegistros);
+    var itensPagina = listaOrdenada.Skip((_paginaAtual - 1) * TamanhoPagina).Take(TamanhoPagina).ToList();
+
     <div class="table-shell">
         <table>
             <thead>
                 <tr>
-                    <th>Nome do segmento</th>
-                    <th>Descrição</th>
-                    <th class="alinhar-centro">Status</th>
+                    <th style="cursor:pointer;" @onclick='() => OrdenarPor("Nome")'>Nome do segmento @IndicadorOrdenacao("Nome")</th>
+                    <th style="cursor:pointer;" @onclick='() => OrdenarPor("Descricao")'>Descrição @IndicadorOrdenacao("Descricao")</th>
+                    <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarPor("Status")'>Status @IndicadorOrdenacao("Status")</th>
                     <th class="alinhar-direita">Ações</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var segmento in _pagina.Itens)
+                @foreach (var segmento in itensPagina)
                 {
                     <tr>
                         <td><strong>@segmento.Nome</strong></td>
@@ -87,7 +96,8 @@ else
             </tbody>
         </table>
         <div class="table-footer">
-            <span>Total de @_pagina.Itens.Count segmentos cadastrados</span>
+            <span>Mostrando @inicio–@fim de @totalRegistros segmentos cadastrados</span>
+            <PaginacaoGrid PaginaAtual="_paginaAtual" TotalPaginas="totalPaginas" OnPaginaMudou="p => _paginaAtual = p" />
         </div>
     </div>
 }
@@ -144,21 +154,54 @@ else
 }
 
 @code {
-    private PaginaResultado<SegmentoResponse>? _pagina;
+    private const int TamanhoPagina = 10;
+
+    private List<SegmentoResponse>? _segmentos;
     private string? _mensagemErro;
     private string? _mensagemSucesso;
     private bool _salvando;
     private ModeloSegmentoForm? _modelo;
     private Guid? _editandoId;
 
+    private string _colunaOrdenacao = "Nome";
+    private bool _ordenacaoAscendente = true;
+    private int _paginaAtual = 1;
+
     protected override async Task OnInitializedAsync() => await CarregarAsync();
+
+    private void OrdenarPor(string coluna)
+    {
+        if (_colunaOrdenacao == coluna) _ordenacaoAscendente = !_ordenacaoAscendente;
+        else { _colunaOrdenacao = coluna; _ordenacaoAscendente = true; }
+        _paginaAtual = 1;
+    }
+
+    private string IndicadorOrdenacao(string coluna)
+    {
+        if (_colunaOrdenacao != coluna) return "↕";
+        return _ordenacaoAscendente ? "↑" : "↓";
+    }
+
+    private IEnumerable<SegmentoResponse> ObterItensOrdenados()
+    {
+        if (_segmentos is null) return [];
+        var itens = _segmentos.AsEnumerable();
+        return _colunaOrdenacao switch
+        {
+            "Nome" => _ordenacaoAscendente ? itens.OrderBy(s => s.Nome) : itens.OrderByDescending(s => s.Nome),
+            "Descricao" => _ordenacaoAscendente ? itens.OrderBy(s => s.Descricao ?? string.Empty) : itens.OrderByDescending(s => s.Descricao ?? string.Empty),
+            "Status" => _ordenacaoAscendente ? itens.OrderBy(s => s.Ativo) : itens.OrderByDescending(s => s.Ativo),
+            _ => itens.OrderBy(s => s.Nome)
+        };
+    }
 
     private async Task CarregarAsync()
     {
         _mensagemErro = null;
         try
         {
-            _pagina = await ApiClient.ListarSegmentosAsync(page: 1, pageSize: 100);
+            var r = await ApiClient.ListarSegmentosAsync(page: 1, pageSize: 5000);
+            _segmentos = r.Itens.ToList();
         }
         catch (ApiException ex) when (ex.EhNaoAutorizado)
         {

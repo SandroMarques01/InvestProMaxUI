@@ -21,6 +21,12 @@ public sealed record EvolucaoCapitalMes(
 
 public sealed record AlocacaoPorTipoPapel(TipoPapel TipoPapel, decimal Valor);
 
+public sealed record TopPapelDashboard(
+    Guid PapelId,
+    string Codigo,
+    decimal ValorTotalAtual,
+    decimal DividendosTotal);
+
 public sealed record DashboardResponse(
     decimal PatrimonioTotal,
     int? PatrimonioAno,
@@ -33,5 +39,5 @@ public sealed record DashboardResponse(
     IReadOnlyList<DividendoMensalPorTipo> DividendosPorMesETipo,
     IReadOnlyList<EvolucaoCapitalMes> EvolucaoCapital,
     IReadOnlyList<AlocacaoPorTipoPapel> AlocacaoPorTipoPapel,
-    decimal DividendosNoMes = 0m);
-
+    decimal DividendosNoMes = 0m,
+    IReadOnlyList<TopPapelDashboard>? TopPapeis = null);

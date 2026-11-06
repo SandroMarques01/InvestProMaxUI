@@ -81,6 +81,15 @@ else
     }
     else
     {
+        var linhasOrdenadas = ObterLinhasOrdenadas(linhasFiltradas).ToList();
+        var totalRegistros = linhasOrdenadas.Count;
+        var totalPaginas = Math.Max(1, (int)Math.Ceiling((double)totalRegistros / TamanhoPagina));
+        if (_paginaAtual > totalPaginas) _paginaAtual = totalPaginas;
+
+        var inicio = ((_paginaAtual - 1) * TamanhoPagina) + 1;
+        var fim = Math.Min(_paginaAtual * TamanhoPagina, totalRegistros);
+        var linhasPagina = linhasOrdenadas.Skip((_paginaAtual - 1) * TamanhoPagina).Take(TamanhoPagina).ToList();
+
         <!-- Gráfico de Evolução Patrimonial (Linhas por Ativo + Total) -->
         <section class="card evolucao-chart-card" style="margin-bottom: 20px;">
             <div class="section-title">
@@ -392,15 +401,20 @@ else
             <table class="evolucao-matrix-table">
                 <thead>
                     <tr>
-                        <th class="sticky-col alinhar-esquerda">Ativo</th>
+                        <th class="sticky-col alinhar-esquerda" style="cursor:pointer;" @onclick="() => OrdenarPor(0)">
+                            Ativo @IndicadorOrdenacao(0)
+                        </th>
                         @foreach (var mes in mesesVisiveis)
                         {
-                            <th class="alinhar-direita col-mes-evolucao">@($"{NomeMesCurto(mes)}/{_ano % 100:00}")</th>
+                            var m = mes;
+                            <th class="alinhar-direita col-mes-evolucao" style="cursor:pointer;" @onclick="() => OrdenarPor(m)">
+                                @($"{NomeMesCurto(m)}/{_ano % 100:00}") @IndicadorOrdenacao(m)
+                            </th>
                         }
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var linha in linhasFiltradas)
+                    @foreach (var linha in linhasPagina)
                     {
                         <tr>
                             <td class="sticky-col alinhar-esquerda">
@@ -487,11 +501,17 @@ else
                     </tr>
                 </tfoot>
             </table>
+            <div class="table-footer">
+                <span>Mostrando @inicio–@fim de @totalRegistros ativos</span>
+                <PaginacaoGrid PaginaAtual="_paginaAtual" TotalPaginas="totalPaginas" OnPaginaMudou="p => _paginaAtual = p" />
+            </div>
         </div>
     }
 }
 
 @code {
+    private const int TamanhoPagina = 10;
+
     private int _ano = DateTime.Today.Year;
     private string _filtroTipo = string.Empty;
     private bool _mostrarTodosOs12Meses;
@@ -499,6 +519,10 @@ else
     private string? _mensagemErro;
     private bool _mostrarTotalNoGrafico = true;
     private HashSet<Guid> _ativosSelecionadosNoGrafico = new();
+
+    private int _colunaOrdenacao = 0; // 0 = Ativo, 1..12 = Mês
+    private bool _ordenacaoAscendente = true;
+    private int _paginaAtual = 1;
 
     private sealed record TooltipDados(
         double X,
@@ -535,15 +559,51 @@ else
         await CarregarAsync();
     }
 
+    private void OrdenarPor(int coluna)
+    {
+        if (_colunaOrdenacao == coluna)
+        {
+            _ordenacaoAscendente = !_ordenacaoAscendente;
+        }
+        else
+        {
+            _colunaOrdenacao = coluna;
+            _ordenacaoAscendente = coluna == 0;
+        }
+        _paginaAtual = 1;
+    }
+
+    private string IndicadorOrdenacao(int coluna)
+    {
+        if (_colunaOrdenacao != coluna) return "↕";
+        return _ordenacaoAscendente ? "↑" : "↓";
+    }
+
+    private IEnumerable<LinhaEvolucaoAtivo> ObterLinhasOrdenadas(List<LinhaEvolucaoAtivo> linhas)
+    {
+        if (_colunaOrdenacao is >= 1 and <= 12)
+        {
+            var mes = _colunaOrdenacao;
+            return _ordenacaoAscendente
+                ? linhas.OrderBy(l => l.Meses[mes].Valor).ThenBy(l => l.Ativo.Nome)
+                : linhas.OrderByDescending(l => l.Meses[mes].Valor).ThenBy(l => l.Ativo.Nome);
+        }
+
+        return _ordenacaoAscendente
+            ? linhas.OrderBy(l => l.Ativo.Nome)
+            : linhas.OrderByDescending(l => l.Ativo.Nome);
+    }
+
     private async Task CarregarAsync()
     {
         _carregando = true;
         _mensagemErro = null;
+        _paginaAtual = 1;
         try
         {
             var ativosTask = CarregarTodosAtivosAsync();
             var invAnoTask = CarregarTodoInventarioDoAnoAsync(_ano);
-            var invDezAnteriorTask = ApiClient.ListarInventarioAsync(ano: _ano - 1, mes: 12, page: 1, pageSize: 100);
+            var invDezAnteriorTask = ApiClient.ListarInventarioAsync(ano: _ano - 1, mes: 12, page: 1, pageSize: 5000);
 
             await Task.WhenAll(ativosTask, invAnoTask, invDezAnteriorTask);
 
@@ -667,7 +727,7 @@ else
         var pagina = 1;
         while (true)
         {
-            var resp = await ApiClient.ListarAtivosAsync(page: pagina, pageSize: 100);
+            var resp = await ApiClient.ListarAtivosAsync(page: pagina, pageSize: 5000);
             todos.AddRange(resp.Itens);
             if (todos.Count >= resp.Total || resp.Itens.Count == 0)
                 break;
@@ -682,7 +742,7 @@ else
         var pagina = 1;
         while (true)
         {
-            var resp = await ApiClient.ListarInventarioAsync(ano: ano, page: pagina, pageSize: 100);
+            var resp = await ApiClient.ListarInventarioAsync(ano: ano, page: pagina, pageSize: 5000);
             todos.AddRange(resp.Itens);
             if (todos.Count >= resp.Total || resp.Itens.Count == 0)
                 break;
@@ -788,6 +848,7 @@ else
 
     private void AjustarSelecaoAposFiltro()
     {
+        _paginaAtual = 1;
         _tooltip = null;
     }
 

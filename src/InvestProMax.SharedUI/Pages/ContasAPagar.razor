@@ -27,12 +27,11 @@
 }
 
 <!-- KPIs -->
-@if (_paginaFaturas is not null)
+@if (_faturas is not null)
 {
-    var faturas = _paginaFaturas.Itens;
-    var totalPrevisto = faturas.Sum(f => f.ValorPrevisto);
-    var totalPago = faturas.Where(f => f.Status == StatusFatura.Paga).Sum(f => f.Pagamento?.ValorPago ?? f.ValorPrevisto);
-    var totalAtrasado = faturas.Where(f => f.Status == StatusFatura.Atrasada).Sum(f => f.ValorPrevisto);
+    var totalPrevisto = _faturas.Sum(f => f.ValorPrevisto);
+    var totalPago = _faturas.Where(f => f.Status == StatusFatura.Paga).Sum(f => f.Pagamento?.ValorPago ?? f.ValorPrevisto);
+    var totalAtrasado = _faturas.Where(f => f.Status == StatusFatura.Atrasada).Sum(f => f.ValorPrevisto);
     var pctPago = totalPrevisto > 0 ? (totalPago / totalPrevisto) * 100m : 0m;
 
     <div class="kpi-grid three">
@@ -42,7 +41,7 @@
                 <div class="kpi-icon"><Icon Name="bills" Size="16" /></div>
             </div>
             <strong>@totalPrevisto.ToString("C2")</strong>
-            <div class="kpi-meta"><span>@faturas.Count faturas na competência</span></div>
+            <div class="kpi-meta"><span>@_faturas.Count faturas na competência</span></div>
         </section>
 
         <section class="card kpi">
@@ -63,7 +62,7 @@
             </div>
             <strong class="@(totalAtrasado > 0 ? "negative" : "")">@totalAtrasado.ToString("C2")</strong>
             <div class="kpi-meta @(totalAtrasado > 0 ? "negative" : "")">
-                <span>@faturas.Count(f => f.Status == StatusFatura.Atrasada) fatura(s) vencida(s)</span>
+                <span>@_faturas.Count(f => f.Status == StatusFatura.Atrasada) fatura(s) vencida(s)</span>
             </div>
         </section>
     </div>
@@ -71,10 +70,10 @@
 
 <div class="tabs">
     <button type="button" class="@(_abaAtiva == "faturas" ? "active" : "")" @onclick="@(() => _abaAtiva = "faturas")">
-        Faturas geradas <span>@(_paginaFaturas?.Itens.Count ?? 0)</span>
+        Faturas geradas <span>@(_faturas?.Count ?? 0)</span>
     </button>
     <button type="button" class="@(_abaAtiva == "contas" ? "active" : "")" @onclick="@(() => _abaAtiva = "contas")">
-        Contas fixas / recorrentes <span>@(_paginaContas?.Itens.Count ?? 0)</span>
+        Contas fixas / recorrentes <span>@(_contas?.Count ?? 0)</span>
     </button>
 </div>
 
@@ -83,7 +82,7 @@
     <div class="filter-bar">
         <label class="field" style="width: 160px;">
             <span>Status</span>
-            <select @bind="_filtroStatus" @bind:after="CarregarFaturasAsync">
+            <select @bind="_filtroStatus" @bind:after="OnFiltroFaturaAlteradoAsync">
                 <option value="">Todos os status</option>
                 @foreach (var status in Enum.GetValues<StatusFatura>())
                 {
@@ -94,11 +93,11 @@
 
         <div class="search-field" style="margin-top: 19px;">
             <Icon Name="search" Size="16" />
-            <input type="text" placeholder="Filtrar por nome da conta..." @bind="_buscaFatura" @bind:event="oninput" />
+            <input type="text" placeholder="Filtrar por nome da conta..." value="@_buscaFatura" @oninput="OnBuscaFaturaAlterada" />
         </div>
     </div>
 
-    @if (_mensagemErro is not null && _paginaFaturas is null)
+    @if (_mensagemErro is not null && _faturas is null)
     {
         <div class="card state-card">
             <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
@@ -111,20 +110,22 @@
             </button>
         </div>
     }
-    else if (_paginaFaturas is null)
+    else if (_faturas is null)
     {
         <LoadingState Mensagem="Carregando faturas..." Subtitulo="Recuperando despesas e compromissos do mês." />
     }
     else
     {
-        var faturasFiltradas = _paginaFaturas.Itens.AsEnumerable();
-        if (!string.IsNullOrWhiteSpace(_buscaFatura))
-        {
-            faturasFiltradas = faturasFiltradas.Where(f => f.ContaNome.Contains(_buscaFatura, StringComparison.OrdinalIgnoreCase));
-        }
-        var listaFaturas = faturasFiltradas.ToList();
+        var listaFaturas = ObterFaturasOrdenadas().ToList();
+        var totalFaturas = listaFaturas.Count;
+        var totalPaginasFat = Math.Max(1, (int)Math.Ceiling((double)totalFaturas / TamanhoPagina));
+        if (_paginaFaturas > totalPaginasFat) _paginaFaturas = totalPaginasFat;
 
-        if (listaFaturas.Count == 0)
+        var inicioFat = totalFaturas == 0 ? 0 : ((_paginaFaturas - 1) * TamanhoPagina) + 1;
+        var fimFat = Math.Min(_paginaFaturas * TamanhoPagina, totalFaturas);
+        var faturasPagina = listaFaturas.Skip((_paginaFaturas - 1) * TamanhoPagina).Take(TamanhoPagina).ToList();
+
+        if (totalFaturas == 0)
         {
             <div class="card state-card">
                 <div class="empty-icon"><Icon Name="bills" Size="28" /></div>
@@ -141,17 +142,17 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Conta</th>
-                            <th class="alinhar-centro">Competência</th>
-                            <th class="alinhar-centro">Vencimento</th>
-                            <th class="alinhar-direita">Valor previsto</th>
-                            <th class="alinhar-centro">Status</th>
-                            <th>Pagamento / Observação</th>
+                            <th style="cursor:pointer;" @onclick='() => OrdenarFaturasPor("Conta")'>Conta @IndicadorOrdenacaoFaturas("Conta")</th>
+                            <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarFaturasPor("Competencia")'>Competência @IndicadorOrdenacaoFaturas("Competencia")</th>
+                            <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarFaturasPor("Vencimento")'>Vencimento @IndicadorOrdenacaoFaturas("Vencimento")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarFaturasPor("ValorPrevisto")'>Valor previsto @IndicadorOrdenacaoFaturas("ValorPrevisto")</th>
+                            <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarFaturasPor("Status")'>Status @IndicadorOrdenacaoFaturas("Status")</th>
+                            <th style="cursor:pointer;" @onclick='() => OrdenarFaturasPor("Pagamento")'>Pagamento / Observação @IndicadorOrdenacaoFaturas("Pagamento")</th>
                             <th class="alinhar-direita">Ação</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var fatura in listaFaturas)
+                        @foreach (var fatura in faturasPagina)
                         {
                             var badgeTone = fatura.Status switch
                             {
@@ -197,8 +198,9 @@
                     </tbody>
                 </table>
                 <div class="table-footer">
-                    <span>@listaFaturas.Count faturas listadas</span>
+                    <span>Mostrando @inicioFat–@fimFat de @totalFaturas faturas</span>
                     <strong>Total previsto: @listaFaturas.Sum(f => f.ValorPrevisto).ToString("C2")</strong>
+                    <PaginacaoGrid PaginaAtual="_paginaFaturas" TotalPaginas="totalPaginasFat" OnPaginaMudou="p => _paginaFaturas = p" />
                 </div>
             </div>
         }
@@ -206,7 +208,7 @@
 }
 else
 {
-    @if (_mensagemErro is not null && _paginaContas is null)
+    @if (_mensagemErro is not null && _contas is null)
     {
         <div class="card state-card">
             <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
@@ -219,11 +221,11 @@ else
             </button>
         </div>
     }
-    else if (_paginaContas is null)
+    else if (_contas is null)
     {
         <LoadingState Mensagem="Carregando contas cadastradas..." Subtitulo="Recuperando despesas fixas recorrentes." />
     }
-    else if (_paginaContas.Itens.Count == 0)
+    else if (_contas.Count == 0)
     {
         <div class="card state-card">
             <div class="empty-icon"><Icon Name="bills" Size="28" /></div>
@@ -236,22 +238,31 @@ else
     }
     else
     {
+        var listaContas = ObterContasOrdenadas().ToList();
+        var totalContas = listaContas.Count;
+        var totalPaginasContas = Math.Max(1, (int)Math.Ceiling((double)totalContas / TamanhoPagina));
+        if (_paginaContas > totalPaginasContas) _paginaContas = totalPaginasContas;
+
+        var inicioContas = ((_paginaContas - 1) * TamanhoPagina) + 1;
+        var fimContas = Math.Min(_paginaContas * TamanhoPagina, totalContas);
+        var contasPagina = listaContas.Skip((_paginaContas - 1) * TamanhoPagina).Take(TamanhoPagina).ToList();
+
         <div class="table-shell">
             <table>
                 <thead>
                     <tr>
-                        <th>Nome da conta</th>
-                        <th class="alinhar-direita">Valor estimado</th>
-                        <th class="alinhar-centro">Dia vencimento</th>
-                        <th class="alinhar-centro">Recorrência</th>
-                        <th class="alinhar-centro">Categoria</th>
-                        <th class="alinhar-centro">Status</th>
-                        <th>Descrição</th>
+                        <th style="cursor:pointer;" @onclick='() => OrdenarContasPor("Nome")'>Nome da conta @IndicadorOrdenacaoContas("Nome")</th>
+                        <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarContasPor("ValorEstimado")'>Valor estimado @IndicadorOrdenacaoContas("ValorEstimado")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarContasPor("DiaVencimento")'>Dia vencimento @IndicadorOrdenacaoContas("DiaVencimento")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarContasPor("Recorrencia")'>Recorrência @IndicadorOrdenacaoContas("Recorrencia")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarContasPor("Categoria")'>Categoria @IndicadorOrdenacaoContas("Categoria")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarContasPor("Status")'>Status @IndicadorOrdenacaoContas("Status")</th>
+                        <th style="cursor:pointer;" @onclick='() => OrdenarContasPor("Descricao")'>Descrição @IndicadorOrdenacaoContas("Descricao")</th>
                         <th class="alinhar-direita">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var conta in _paginaContas.Itens)
+                    @foreach (var conta in contasPagina)
                     {
                         <tr>
                             <td><strong>@conta.Nome</strong></td>
@@ -276,7 +287,8 @@ else
                 </tbody>
             </table>
             <div class="table-footer">
-                <span>@_paginaContas.Itens.Count contas cadastradas</span>
+                <span>Mostrando @inicioContas–@fimContas de @totalContas contas cadastradas</span>
+                <PaginacaoGrid PaginaAtual="_paginaContas" TotalPaginas="totalPaginasContas" OnPaginaMudou="p => _paginaContas = p" />
             </div>
         </div>
     }
@@ -428,14 +440,24 @@ else
 }
 
 @code {
+    private const int TamanhoPagina = 10;
+
     private string _abaAtiva = "faturas";
-    private PaginaResultado<FaturaResponse>? _paginaFaturas;
-    private PaginaResultado<ContaResponse>? _paginaContas;
+    private List<FaturaResponse>? _faturas;
+    private List<ContaResponse>? _contas;
     private string _filtroStatus = string.Empty;
     private string _buscaFatura = string.Empty;
     private string? _mensagemErro;
     private string? _mensagemSucesso;
     private bool _processando;
+
+    private string _colFaturas = "Vencimento";
+    private bool _ascFaturas = true;
+    private int _paginaFaturas = 1;
+
+    private string _colContas = "Nome";
+    private bool _ascContas = true;
+    private int _paginaContas = 1;
 
     private FaturaResponse? _faturaEmPagamento;
     private FormPagamento? _modeloPagamento;
@@ -449,13 +471,93 @@ else
         await CarregarContasAsync();
     }
 
+    private async Task OnFiltroFaturaAlteradoAsync()
+    {
+        _paginaFaturas = 1;
+        await CarregarFaturasAsync();
+    }
+
+    private void OnBuscaFaturaAlterada(ChangeEventArgs e)
+    {
+        _buscaFatura = e.Value?.ToString() ?? string.Empty;
+        _paginaFaturas = 1;
+    }
+
+    private void OrdenarFaturasPor(string col)
+    {
+        if (_colFaturas == col) _ascFaturas = !_ascFaturas;
+        else { _colFaturas = col; _ascFaturas = true; }
+        _paginaFaturas = 1;
+    }
+
+    private string IndicadorOrdenacaoFaturas(string col)
+    {
+        if (_colFaturas != col) return "↕";
+        return _ascFaturas ? "↑" : "↓";
+    }
+
+    private IEnumerable<FaturaResponse> ObterFaturasOrdenadas()
+    {
+        if (_faturas is null) return [];
+        var itens = _faturas.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_buscaFatura))
+        {
+            var termo = _buscaFatura.Trim();
+            itens = itens.Where(f => f.ContaNome.Contains(termo, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return _colFaturas switch
+        {
+            "Conta" => _ascFaturas ? itens.OrderBy(f => f.ContaNome) : itens.OrderByDescending(f => f.ContaNome),
+            "Competencia" => _ascFaturas ? itens.OrderBy(f => f.Competencia) : itens.OrderByDescending(f => f.Competencia),
+            "Vencimento" => _ascFaturas ? itens.OrderBy(f => f.DataVencimento) : itens.OrderByDescending(f => f.DataVencimento),
+            "ValorPrevisto" => _ascFaturas ? itens.OrderBy(f => f.ValorPrevisto) : itens.OrderByDescending(f => f.ValorPrevisto),
+            "Status" => _ascFaturas ? itens.OrderBy(f => f.Status) : itens.OrderByDescending(f => f.Status),
+            "Pagamento" => _ascFaturas
+                ? itens.OrderBy(f => f.Pagamento?.Data ?? DateOnly.MaxValue)
+                : itens.OrderByDescending(f => f.Pagamento?.Data ?? DateOnly.MinValue),
+            _ => itens.OrderBy(f => f.DataVencimento)
+        };
+    }
+
+    private void OrdenarContasPor(string col)
+    {
+        if (_colContas == col) _ascContas = !_ascContas;
+        else { _colContas = col; _ascContas = true; }
+        _paginaContas = 1;
+    }
+
+    private string IndicadorOrdenacaoContas(string col)
+    {
+        if (_colContas != col) return "↕";
+        return _ascContas ? "↑" : "↓";
+    }
+
+    private IEnumerable<ContaResponse> ObterContasOrdenadas()
+    {
+        if (_contas is null) return [];
+        var itens = _contas.AsEnumerable();
+        return _colContas switch
+        {
+            "Nome" => _ascContas ? itens.OrderBy(c => c.Nome) : itens.OrderByDescending(c => c.Nome),
+            "ValorEstimado" => _ascContas ? itens.OrderBy(c => c.ValorEstimado) : itens.OrderByDescending(c => c.ValorEstimado),
+            "DiaVencimento" => _ascContas ? itens.OrderBy(c => c.DiaVencimento) : itens.OrderByDescending(c => c.DiaVencimento),
+            "Recorrencia" => _ascContas ? itens.OrderBy(c => c.Recorrencia) : itens.OrderByDescending(c => c.Recorrencia),
+            "Categoria" => _ascContas ? itens.OrderBy(c => c.Categoria ?? string.Empty) : itens.OrderByDescending(c => c.Categoria ?? string.Empty),
+            "Status" => _ascContas ? itens.OrderBy(c => c.StatusAtivo) : itens.OrderByDescending(c => c.StatusAtivo),
+            "Descricao" => _ascContas ? itens.OrderBy(c => c.Descricao ?? string.Empty) : itens.OrderByDescending(c => c.Descricao ?? string.Empty),
+            _ => itens.OrderBy(c => c.Nome)
+        };
+    }
+
     private async Task CarregarFaturasAsync()
     {
         _mensagemErro = null;
         try
         {
             StatusFatura? status = Enum.TryParse<StatusFatura>(_filtroStatus, out var s) ? s : null;
-            _paginaFaturas = await ApiClient.ListarFaturasAsync(status: status);
+            var r = await ApiClient.ListarFaturasAsync(status: status, page: 1, pageSize: 5000);
+            _faturas = r.Itens.ToList();
         }
         catch (ApiException ex) when (ex.EhNaoAutorizado)
         {
@@ -471,7 +573,8 @@ else
     {
         try
         {
-            _paginaContas = await ApiClient.ListarContasAsync();
+            var r = await ApiClient.ListarContasAsync(page: 1, pageSize: 5000);
+            _contas = r.Itens.ToList();
         }
         catch { }
     }

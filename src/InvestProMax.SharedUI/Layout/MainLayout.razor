@@ -4,7 +4,9 @@
 @inject NavigationManager Navegacao
 @inject IJSRuntime Js
 @using System.ComponentModel.DataAnnotations
+@using System.Globalization
 @using System.Security.Claims
+@using System.Text
 @using InvestProMax.SharedUI.Dtos
 
 <div class="app-shell @(_collapsed ? "sidebar-collapsed" : "")">
@@ -27,47 +29,55 @@
                     </button>
                 </div>
 
+                <div class="side-search-wrap">
+                    @if (!_collapsed)
+                    {
+                        <div class="side-search">
+                            <Icon Name="search" Size="14" />
+                            <input type="text"
+                                   placeholder="Buscar página..."
+                                   @bind="_buscaMenu"
+                                   @bind:event="oninput" />
+                            @if (!string.IsNullOrWhiteSpace(_buscaMenu))
+                            {
+                                <button type="button" class="side-search-clear" @onclick="LimparBuscaMenu" title="Limpar busca">
+                                    <Icon Name="close" Size="12" />
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button" class="side-search-collapsed-btn" @onclick="ExpandirMenuParaBusca" title="Buscar página no menu">
+                            <Icon Name="search" Size="18" />
+                        </button>
+                    }
+                </div>
+
                 <nav class="side-nav">
-                    <NavLink href="" Match="NavLinkMatch.All">
-                        <Icon Name="dashboard" />
-                        @if (!_collapsed) { <span>Dashboard</span> }
-                    </NavLink>
-                    <NavLink href="papeis-geral">
-                        <Icon Name="papers" />
-                        @if (!_collapsed) { <span>Papéis</span> }
-                    </NavLink>
-                    <NavLink href="transacoes">
-                        <Icon Name="transaction" />
-                        @if (!_collapsed) { <span>Transações</span> }
-                    </NavLink>
-                    <NavLink href="dividendos">
-                        <Icon Name="dividend" />
-                        @if (!_collapsed) { <span>Dividendos</span> }
-                    </NavLink>
-                    <NavLink href="inventario">
-                        <Icon Name="inventory" />
-                        @if (!_collapsed) { <span>Inventário</span> }
-                    </NavLink>
-                    <NavLink href="evolucao-patrimonial">
-                        <Icon Name="evolution" />
-                        @if (!_collapsed) { <span>Evolução Patrimonial</span> }
-                    </NavLink>
-                    <NavLink href="ativos">
-                        <Icon Name="assets" />
-                        @if (!_collapsed) { <span>Ativos</span> }
-                    </NavLink>
-                    <NavLink href="contas-a-pagar">
-                        <Icon Name="bills" />
-                        @if (!_collapsed) { <span>Contas a pagar</span> }
-                    </NavLink>
-                    <NavLink href="segmentos">
-                        <Icon Name="segments" />
-                        @if (!_collapsed) { <span>Segmentos</span> }
-                    </NavLink>
-                    <NavLink href="configuracoes">
-                        <Icon Name="settings" />
-                        @if (!_collapsed) { <span>Configurações</span> }
-                    </NavLink>
+                    @{
+                        var itensDesktop = ObterItensMenuFiltrados().ToList();
+                    }
+                    @if (itensDesktop.Count == 0)
+                    {
+                        @if (!_collapsed)
+                        {
+                            <div class="side-nav-empty">Nenhuma página encontrada</div>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var item in itensDesktop)
+                        {
+                            <NavLink href="@item.Href" Match="@(item.MatchAll ? NavLinkMatch.All : NavLinkMatch.Prefix)" title="@item.Titulo">
+                                <Icon Name="@item.Icone" />
+                                @if (!_collapsed)
+                                {
+                                    <span>@item.Titulo</span>
+                                }
+                            </NavLink>
+                        }
+                    }
                 </nav>
 
                 <div class="side-user-container">
@@ -141,29 +151,60 @@
                 </div>
             </aside>
 
+            @if (_buscaMobileAberta)
+            {
+                <div class="mobile-search-backdrop" @onclick="FecharBuscaMobile"></div>
+                <div class="mobile-search-panel">
+                    <div class="mobile-search-input-row">
+                        <Icon Name="search" Size="16" />
+                        <input type="text"
+                               placeholder="Buscar página do menu..."
+                               @bind="_buscaMenu"
+                               @bind:event="oninput" />
+                        @if (!string.IsNullOrWhiteSpace(_buscaMenu))
+                        {
+                            <button type="button" class="icon-btn" @onclick="LimparBuscaMenu" title="Limpar">
+                                <Icon Name="close" Size="14" />
+                            </button>
+                        }
+                        <button type="button" class="btn btn-ghost" style="height: 28px; padding: 0 8px; font-size: 11px;" @onclick="FecharBuscaMobile">
+                            Fechar
+                        </button>
+                    </div>
+                    <div class="mobile-search-results">
+                        @{
+                            var resultadosMobile = ObterItensMenuFiltrados(incluirSubpaginas: true).ToList();
+                        }
+                        @if (resultadosMobile.Count == 0)
+                        {
+                            <div class="mobile-search-empty">Nenhuma página encontrada para "@_buscaMenu"</div>
+                        }
+                        else
+                        {
+                            @foreach (var item in resultadosMobile)
+                            {
+                                <button type="button" class="mobile-search-result-item" @onclick="() => NavegarPelaBuscaMobile(item.Href)">
+                                    <Icon Name="@item.Icone" Size="16" />
+                                    <span>@item.Titulo</span>
+                                </button>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+
             <nav class="mobile-nav">
-                <NavLink href="" Match="NavLinkMatch.All">
-                    <Icon Name="dashboard" />
-                    <span>Dashboard</span>
-                </NavLink>
-                <NavLink href="papeis-geral">
-                    <Icon Name="papers" />
-                    <span>Papéis</span>
-                </NavLink>
-                <NavLink href="transacoes">
-                    <Icon Name="transaction" />
-                    <span>Transações</span>
-                </NavLink>
-                <NavLink href="dividendos">
-                    <Icon Name="dividend" />
-                    <span>Dividendos</span>
-                </NavLink>
-                <NavLink href="inventario"><Icon Name="inventory" /><span>Inventário</span></NavLink>
-                <NavLink href="evolucao-patrimonial"><Icon Name="evolution" /><span>Evolução</span></NavLink>
-                <NavLink href="ativos"><Icon Name="assets" /><span>Ativos</span></NavLink>
-                <NavLink href="contas-a-pagar"><Icon Name="bills" /><span>Contas</span></NavLink>
-                <NavLink href="segmentos"><Icon Name="segments" /><span>Segmentos</span></NavLink>
-                <NavLink href="configuracoes"><Icon Name="settings" /><span>Config.</span></NavLink>
+                <button type="button" class="mobile-search-trigger @(_buscaMobileAberta ? "active" : "")" @onclick="AlternarBuscaMobile" title="Buscar página">
+                    <Icon Name="search" />
+                    <span>Buscar</span>
+                </button>
+                @foreach (var item in ObterItensMenuFiltrados())
+                {
+                    <NavLink href="@item.Href" Match="@(item.MatchAll ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="FecharBuscaMobile">
+                        <Icon Name="@item.Icone" />
+                        <span>@item.TituloMobile</span>
+                    </NavLink>
+                }
                 <button type="button" class="mobile-user-btn" @onclick="IrParaPerfilUsuario">
                     <div class="avatar" style="width: 22px; height: 22px; font-size: 9px;">@ObterIniciais(context.User.Identity?.Name)</div>
                     <span>Conta</span>
@@ -233,6 +274,30 @@
 }
 
 @code {
+    private sealed record ItemMenuNavegacao(
+        string Href,
+        string Titulo,
+        string TituloMobile,
+        string Icone,
+        string PalavrasChave,
+        bool MatchAll = false,
+        bool ApenasNaBusca = false);
+
+    private static readonly IReadOnlyList<ItemMenuNavegacao> TodosItensMenu =
+    [
+        new("", "Dashboard", "Dashboard", "dashboard", "dashboard inicio painel resumo indicadores", MatchAll: true),
+        new("papeis-geral", "Papéis", "Papéis", "papers", "papeis carteira visao geral acoes fiis bdrs etfs cotacoes"),
+        new("papeis", "Cadastro de papéis", "Cad. Papéis", "papers", "cadastro de papeis tickers desdobramento grupamento", ApenasNaBusca: true),
+        new("transacoes", "Transações", "Transações", "transaction", "transacoes compras vendas operacoes ordens"),
+        new("dividendos", "Dividendos", "Dividendos", "dividend", "dividendos proventos jcp rendimentos aluguel"),
+        new("inventario", "Inventário", "Inventário", "inventory", "inventario fechamento mensal patrimonio"),
+        new("evolucao-patrimonial", "Evolução Patrimonial", "Evolução", "evolution", "evolucao patrimonial anual historico"),
+        new("ativos", "Ativos", "Ativos", "assets", "ativos renda fixa variavel patrimonio"),
+        new("contas-a-pagar", "Contas a pagar", "Contas", "bills", "contas a pagar faturas despesas boletos"),
+        new("segmentos", "Segmentos", "Segmentos", "segments", "segmentos setores classificacao"),
+        new("configuracoes", "Configurações", "Config.", "settings", "configuracoes importar b3 backup mongo senha conta usuarios ambiente")
+    ];
+
     private bool _collapsed;
     private bool _menuUsuarioAberto;
     private bool _temaEscuro;
@@ -241,7 +306,69 @@
     private string? _msgErroSenha;
     private string? _msgSucessoSenha;
     private string _confirmacaoSenha = string.Empty;
+    private string _buscaMenu = string.Empty;
+    private bool _buscaMobileAberta;
     private readonly ModeloTrocarSenhaModal _modeloSenhaModal = new();
+
+    private IEnumerable<ItemMenuNavegacao> ObterItensMenuFiltrados(bool incluirSubpaginas = false)
+    {
+        var temFiltro = !string.IsNullOrWhiteSpace(_buscaMenu);
+        var baseItens = (temFiltro || incluirSubpaginas)
+            ? TodosItensMenu
+            : TodosItensMenu.Where(i => !i.ApenasNaBusca);
+
+        if (!temFiltro)
+        {
+            return baseItens;
+        }
+
+        var termo = RemoverAcentos(_buscaMenu.Trim());
+        return baseItens.Where(i =>
+            RemoverAcentos(i.Titulo).Contains(termo, StringComparison.OrdinalIgnoreCase) ||
+            RemoverAcentos(i.PalavrasChave).Contains(termo, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string RemoverAcentos(string texto)
+    {
+        if (string.IsNullOrEmpty(texto)) return string.Empty;
+        var normalizado = texto.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(normalizado.Length);
+        foreach (var c in normalizado)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    private void LimparBuscaMenu()
+    {
+        _buscaMenu = string.Empty;
+    }
+
+    private void ExpandirMenuParaBusca()
+    {
+        _collapsed = false;
+    }
+
+    private void AlternarBuscaMobile()
+    {
+        _buscaMobileAberta = !_buscaMobileAberta;
+    }
+
+    private void FecharBuscaMobile()
+    {
+        _buscaMobileAberta = false;
+    }
+
+    private void NavegarPelaBuscaMobile(string href)
+    {
+        _buscaMobileAberta = false;
+        _buscaMenu = string.Empty;
+        Navegacao.NavigateTo(href);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

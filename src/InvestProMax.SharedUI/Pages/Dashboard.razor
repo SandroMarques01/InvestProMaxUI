@@ -35,6 +35,18 @@ else
         : 0m;
     var ehPositivo = _dashboard.GanhoTotalCarteira >= 0;
 
+    var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
+    var mesAnterior = new DateOnly(hoje.Year, hoje.Month, 1).AddMonths(-1);
+    var evolucaoAteMesAnterior = _dashboard.EvolucaoCapital
+        .Where(e => e.Ano < mesAnterior.Year || (e.Ano == mesAnterior.Year && e.Mes <= mesAnterior.Month))
+        .OrderBy(e => e.Ano)
+        .ThenBy(e => e.Mes)
+        .LastOrDefault();
+    var totalInvestidoAteMesAnterior = evolucaoAteMesAnterior?.CapitalAcumulado ?? 0m;
+    var pctDividendoMesSobreInvestidoAnterior = totalInvestidoAteMesAnterior > 0m
+        ? (_dashboard.DividendosNoMes / totalInvestidoAteMesAnterior) * 100m
+        : 0m;
+
     <div class="kpi-grid five">
         <!-- 1. Patrimônio total (Mês atual) -->
         <section class="card kpi">
@@ -93,7 +105,10 @@ else
                 <div class="kpi-icon positive"><Icon Name="dividend" Size="16" /></div>
             </div>
             <strong class="positive">@FormatarMoeda(_dashboard.DividendosNoMes)</strong>
-            <div class="kpi-meta">
+            <div class="kpi-meta" style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                <span class="positive" title="Percentual do dividendo do mês pelo valor total investido até o mês anterior (@FormatarMoeda(totalInvestidoAteMesAnterior))">
+                    @pctDividendoMesSobreInvestidoAnterior.ToString("N2")% sobre investido até mês ant.
+                </span>
                 <span>Total histórico: @FormatarMoeda(_dashboard.TotalDividendosHistorico)</span>
             </div>
         </section>
@@ -178,7 +193,6 @@ else
             @{
                 var maxDiv = _dashboard.DividendosPorMes.Count > 0 ? _dashboard.DividendosPorMes.Max(d => d.Total) : 0;
                 if (maxDiv <= 0) maxDiv = 1;
-                var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
             }
 
             <div class="chart-with-grid">
@@ -279,7 +293,7 @@ else
             </div>
         </section>
 
-        <!-- Dividendos por tipo (Tabela completa) -->
+        <!-- Dividendos por tipo (Tabela completa com ordenação e paginação) -->
         <section class="card upcoming">
             <div class="section-title">
                 <div>
@@ -304,10 +318,14 @@ else
             }
             else
             {
-                var listaOrdenada = _dashboard.DividendosPorMesETipo
-                    .OrderByDescending(d => d.Ano)
-                    .ThenByDescending(d => d.Mes)
-                    .ToList();
+                var listaOrdenada = ObterDividendosPorTipoOrdenados().ToList();
+                var totalRegistrosDiv = listaOrdenada.Count;
+                var totalPaginasDiv = Math.Max(1, (int)Math.Ceiling((double)totalRegistrosDiv / TamanhoPaginaPadrao));
+                if (_paginaDivTipo > totalPaginasDiv) _paginaDivTipo = totalPaginasDiv;
+
+                var inicioDiv = ((_paginaDivTipo - 1) * TamanhoPaginaPadrao) + 1;
+                var fimDiv = Math.Min(_paginaDivTipo * TamanhoPaginaPadrao, totalRegistrosDiv);
+                var itensPaginaDiv = listaOrdenada.Skip((_paginaDivTipo - 1) * TamanhoPaginaPadrao).Take(TamanhoPaginaPadrao).ToList();
 
                 var totalAcoes = listaOrdenada.Sum(d => d.Acoes);
                 var totalFiis = listaOrdenada.Sum(d => d.Fiis);
@@ -315,20 +333,32 @@ else
                 var totalEtfs = listaOrdenada.Sum(d => d.Etfs);
                 var totalTudo = listaOrdenada.Sum(d => d.Total);
 
-                <div class="table-sticky-container">
+                <div class="table-shell" style="border: 0; box-shadow: none;">
                     <table>
                         <thead>
                             <tr>
-                                <th class="alinhar-centro">Mês/Ano</th>
-                                <th class="alinhar-direita">Ações</th>
-                                <th class="alinhar-direita">FIIs</th>
-                                <th class="alinhar-direita">BDRs</th>
-                                <th class="alinhar-direita">ETFs</th>
-                                <th class="alinhar-direita">Total</th>
+                                <th class="alinhar-centro" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("MesAno")'>
+                                    Mês/Ano @IndicadorOrdenacaoDivTipo("MesAno")
+                                </th>
+                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Acoes")'>
+                                    Ações @IndicadorOrdenacaoDivTipo("Acoes")
+                                </th>
+                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Fiis")'>
+                                    FIIs @IndicadorOrdenacaoDivTipo("Fiis")
+                                </th>
+                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Bdrs")'>
+                                    BDRs @IndicadorOrdenacaoDivTipo("Bdrs")
+                                </th>
+                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Etfs")'>
+                                    ETFs @IndicadorOrdenacaoDivTipo("Etfs")
+                                </th>
+                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Total")'>
+                                    Total @IndicadorOrdenacaoDivTipo("Total")
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var item in listaOrdenada)
+                            @foreach (var item in itensPaginaDiv)
                             {
                                 <tr>
                                     <td class="alinhar-centro font-bold">@($"{item.Mes:00}/{item.Ano}")</td>
@@ -351,10 +381,90 @@ else
                             </tr>
                         </tfoot>
                     </table>
+                    <div class="table-footer">
+                        <span>Mostrando @inicioDiv–@fimDiv de @totalRegistrosDiv competências</span>
+                        <PaginacaoGrid PaginaAtual="_paginaDivTipo" TotalPaginas="totalPaginasDiv" OnPaginaMudou="p => _paginaDivTipo = p" />
+                    </div>
                 </div>
             }
         </section>
     </div>
+
+    <!-- Top 10 papéis com maior total atual -->
+    <section class="card" style="margin-bottom: 18px;">
+        <div class="section-title">
+            <div>
+                <h2>Top 10 papéis com maior total atual</h2>
+                <p>Maiores posições ativas da carteira por valor total de mercado</p>
+            </div>
+            @if (_topPapeis.Count > 0)
+            {
+                <div style="font-size: 11px;">
+                    <span style="color: var(--muted);">Total Top 10: </span>
+                    <strong>@FormatarMoeda(_topPapeis.Sum(p => p.ValorTotalAtual))</strong>
+                </div>
+            }
+        </div>
+
+        @if (_topPapeis.Count == 0)
+        {
+            <div style="padding: 30px; text-align: center; color: var(--muted);">
+                Nenhum papel ativo em carteira.
+            </div>
+        }
+        else
+        {
+            var topOrdenados = ObterTopPapeisOrdenados().ToList();
+            var totalTop = topOrdenados.Count;
+            var totalPaginasTop = Math.Max(1, (int)Math.Ceiling((double)totalTop / TamanhoPaginaPadrao));
+            if (_paginaTopPapeis > totalPaginasTop) _paginaTopPapeis = totalPaginasTop;
+
+            var inicioTop = ((_paginaTopPapeis - 1) * TamanhoPaginaPadrao) + 1;
+            var fimTop = Math.Min(_paginaTopPapeis * TamanhoPaginaPadrao, totalTop);
+            var itensTopPagina = topOrdenados.Skip((_paginaTopPapeis - 1) * TamanhoPaginaPadrao).Take(TamanhoPaginaPadrao).ToList();
+
+            <div class="table-shell" style="border: 0; box-shadow: none;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("Codigo")'>
+                                Código @IndicadorOrdenacaoTopPapeis("Codigo")
+                            </th>
+                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("ValorTotalAtual")'>
+                                Valor total atual @IndicadorOrdenacaoTopPapeis("ValorTotalAtual")
+                            </th>
+                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("DividendosTotal")'>
+                                Dividendos total @IndicadorOrdenacaoTopPapeis("DividendosTotal")
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in itensTopPagina)
+                        {
+                            <tr>
+                                <td>
+                                    <a class="paper-link" href="/papeis/@item.PapelId">@item.Codigo</a>
+                                </td>
+                                <td class="alinhar-direita font-bold">@FormatarMoeda(item.ValorTotalAtual)</td>
+                                <td class="alinhar-direita positive font-bold">@FormatarMoeda(item.DividendosTotal)</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="alinhar-esquerda font-bold">Total Top 10</td>
+                            <td class="alinhar-direita font-bold">@FormatarMoeda(topOrdenados.Sum(p => p.ValorTotalAtual))</td>
+                            <td class="alinhar-direita positive font-bold">@FormatarMoeda(topOrdenados.Sum(p => p.DividendosTotal))</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <div class="table-footer">
+                    <span>Mostrando @inicioTop–@fimTop de @totalTop papéis</span>
+                    <PaginacaoGrid PaginaAtual="_paginaTopPapeis" TotalPaginas="totalPaginasTop" OnPaginaMudou="p => _paginaTopPapeis = p" />
+                </div>
+            </div>
+        }
+    </section>
 
     <!-- Quick actions -->
     <div class="quick-actions">
@@ -366,10 +476,21 @@ else
 }
 
 @code {
+    private const int TamanhoPaginaPadrao = 10;
+
     private DashboardResponse? _dashboard;
+    private IReadOnlyList<TopPapelDashboard> _topPapeis = [];
     private string? _mensagemErro;
     private bool _carregando;
     private bool _modoCapitalAcumulado = true;
+
+    private string _colunaDivTipo = "MesAno";
+    private bool _ascDivTipo = false;
+    private int _paginaDivTipo = 1;
+
+    private string _colunaTopPapeis = "ValorTotalAtual";
+    private bool _ascTopPapeis = false;
+    private int _paginaTopPapeis = 1;
 
     protected override async Task OnInitializedAsync()
     {
@@ -383,6 +504,28 @@ else
         try
         {
             _dashboard = await ApiClient.ObterDashboardAsync();
+            if (_dashboard.TopPapeis is { Count: > 0 } topDoDashboard)
+            {
+                _topPapeis = topDoDashboard;
+            }
+            else
+            {
+                try
+                {
+                    var papeisGeral = await ApiClient.ObterPapeisGeralAsync(somenteAtivos: true);
+                    _topPapeis = papeisGeral.Itens
+                        .Where(p => p.QuantidadeTotal > 0)
+                        .OrderByDescending(p => p.TotalAtual)
+                        .ThenBy(p => p.Codigo)
+                        .Take(10)
+                        .Select(p => new TopPapelDashboard(p.Id, p.Codigo, p.TotalAtual, p.TotalDividendos))
+                        .ToList();
+                }
+                catch
+                {
+                    _topPapeis = [];
+                }
+            }
         }
         catch (ApiException ex) when (ex.EhNaoAutorizado)
         {
@@ -404,6 +547,77 @@ else
         {
             _carregando = false;
         }
+    }
+
+    private void OrdenarDivTipoPor(string coluna)
+    {
+        if (_colunaDivTipo == coluna)
+        {
+            _ascDivTipo = !_ascDivTipo;
+        }
+        else
+        {
+            _colunaDivTipo = coluna;
+            _ascDivTipo = true;
+        }
+        _paginaDivTipo = 1;
+    }
+
+    private string IndicadorOrdenacaoDivTipo(string coluna)
+    {
+        if (_colunaDivTipo != coluna) return "↕";
+        return _ascDivTipo ? "↑" : "↓";
+    }
+
+    private IEnumerable<DividendoMensalPorTipo> ObterDividendosPorTipoOrdenados()
+    {
+        if (_dashboard is null) return [];
+        var itens = _dashboard.DividendosPorMesETipo.AsEnumerable();
+
+        return _colunaDivTipo switch
+        {
+            "MesAno" => _ascDivTipo
+                ? itens.OrderBy(d => d.Ano).ThenBy(d => d.Mes)
+                : itens.OrderByDescending(d => d.Ano).ThenByDescending(d => d.Mes),
+            "Acoes" => _ascDivTipo ? itens.OrderBy(d => d.Acoes) : itens.OrderByDescending(d => d.Acoes),
+            "Fiis" => _ascDivTipo ? itens.OrderBy(d => d.Fiis) : itens.OrderByDescending(d => d.Fiis),
+            "Bdrs" => _ascDivTipo ? itens.OrderBy(d => d.Bdrs) : itens.OrderByDescending(d => d.Bdrs),
+            "Etfs" => _ascDivTipo ? itens.OrderBy(d => d.Etfs) : itens.OrderByDescending(d => d.Etfs),
+            "Total" => _ascDivTipo ? itens.OrderBy(d => d.Total) : itens.OrderByDescending(d => d.Total),
+            _ => itens.OrderByDescending(d => d.Ano).ThenByDescending(d => d.Mes)
+        };
+    }
+
+    private void OrdenarTopPapeisPor(string coluna)
+    {
+        if (_colunaTopPapeis == coluna)
+        {
+            _ascTopPapeis = !_ascTopPapeis;
+        }
+        else
+        {
+            _colunaTopPapeis = coluna;
+            _ascTopPapeis = true;
+        }
+        _paginaTopPapeis = 1;
+    }
+
+    private string IndicadorOrdenacaoTopPapeis(string coluna)
+    {
+        if (_colunaTopPapeis != coluna) return "↕";
+        return _ascTopPapeis ? "↑" : "↓";
+    }
+
+    private IEnumerable<TopPapelDashboard> ObterTopPapeisOrdenados()
+    {
+        var itens = _topPapeis.AsEnumerable();
+        return _colunaTopPapeis switch
+        {
+            "Codigo" => _ascTopPapeis ? itens.OrderBy(p => p.Codigo) : itens.OrderByDescending(p => p.Codigo),
+            "ValorTotalAtual" => _ascTopPapeis ? itens.OrderBy(p => p.ValorTotalAtual) : itens.OrderByDescending(p => p.ValorTotalAtual),
+            "DividendosTotal" => _ascTopPapeis ? itens.OrderBy(p => p.DividendosTotal) : itens.OrderByDescending(p => p.DividendosTotal),
+            _ => itens.OrderByDescending(p => p.ValorTotalAtual)
+        };
     }
 
     private static string FormatarMoeda(decimal valor) =>

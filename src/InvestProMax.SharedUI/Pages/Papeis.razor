@@ -43,7 +43,7 @@
 <div class="filter-bar">
     <label class="field" style="width: 160px;">
         <span>Filtrar por tipo</span>
-        <select @bind="_filtroTipo" @bind:after="CarregarAsync">
+        <select @bind="_filtroTipo" @bind:after="OnFiltroAlteradoAsync">
             <option value="">Todos</option>
             @foreach (var tipo in Enum.GetValues<TipoPapel>())
             {
@@ -54,11 +54,11 @@
 
     <div class="search-field" style="margin-top: 19px;">
         <Icon Name="search" Size="16" />
-        <input type="text" placeholder="Filtrar por código ou nome..." @bind="_busca" @bind:event="oninput" />
+        <input type="text" placeholder="Filtrar por código ou nome..." value="@_busca" @oninput="OnBuscaAlterada" />
     </div>
 </div>
 
-@if (_mensagemErro is not null && _pagina is null)
+@if (_mensagemErro is not null && _todosPapeis is null)
 {
     <div class="card state-card">
         <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
@@ -71,20 +71,22 @@
         </button>
     </div>
 }
-else if (_pagina is null)
+else if (_todosPapeis is null)
 {
     <LoadingState Mensagem="Carregando papéis..." Subtitulo="Obtendo a lista de ativos cadastrados." />
 }
 else
 {
-    var itens = _pagina.Itens.AsEnumerable();
-    if (!string.IsNullOrWhiteSpace(_busca))
-    {
-        itens = itens.Where(p => p.Codigo.Contains(_busca, StringComparison.OrdinalIgnoreCase) || p.Nome.Contains(_busca, StringComparison.OrdinalIgnoreCase));
-    }
-    var lista = itens.ToList();
+    var lista = ObterItensOrdenados().ToList();
+    var totalRegistros = lista.Count;
+    var totalPaginas = Math.Max(1, (int)Math.Ceiling((double)totalRegistros / _tamanhoPagina));
+    if (_paginaAtual > totalPaginas) _paginaAtual = totalPaginas;
 
-    if (lista.Count == 0)
+    var inicio = totalRegistros == 0 ? 0 : ((_paginaAtual - 1) * _tamanhoPagina) + 1;
+    var fim = Math.Min(_paginaAtual * _tamanhoPagina, totalRegistros);
+    var itensPagina = lista.Skip((_paginaAtual - 1) * _tamanhoPagina).Take(_tamanhoPagina).ToList();
+
+    if (totalRegistros == 0)
     {
         <div class="card state-card">
             <div class="empty-icon"><Icon Name="papers" Size="28" /></div>
@@ -101,19 +103,19 @@ else
             <table>
                 <thead>
                     <tr>
-                        <th>Código</th>
-                        <th>Nome</th>
-                        <th class="alinhar-centro">Tipo</th>
-                        <th class="alinhar-direita">Cotação</th>
-                        <th class="alinhar-direita">Qtd. atual</th>
-                        <th class="alinhar-direita">Em aluguel</th>
-                        <th class="alinhar-direita">Preço médio</th>
-                        <th class="alinhar-centro">Status</th>
+                        <th style="cursor:pointer;" @onclick='() => OrdenarPor("Codigo")'>Código @IndicadorOrdenacao("Codigo")</th>
+                        <th style="cursor:pointer;" @onclick='() => OrdenarPor("Nome")'>Nome @IndicadorOrdenacao("Nome")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarPor("Tipo")'>Tipo @IndicadorOrdenacao("Tipo")</th>
+                        <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarPor("Cotacao")'>Cotação @IndicadorOrdenacao("Cotacao")</th>
+                        <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarPor("QtdAtual")'>Qtd. atual @IndicadorOrdenacao("QtdAtual")</th>
+                        <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarPor("EmAluguel")'>Em aluguel @IndicadorOrdenacao("EmAluguel")</th>
+                        <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarPor("PrecoMedio")'>Preço médio @IndicadorOrdenacao("PrecoMedio")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarPor("Status")'>Status @IndicadorOrdenacao("Status")</th>
                         <th class="alinhar-direita">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var papel in lista)
+                    @foreach (var papel in itensPagina)
                     {
                         <tr>
                             <td>
@@ -145,7 +147,8 @@ else
                 </tbody>
             </table>
             <div class="table-footer">
-                <span>Total de @lista.Count papéis cadastrados</span>
+                <span>Mostrando @inicio–@fim de @totalRegistros papéis cadastrados</span>
+                <PaginacaoGrid PaginaAtual="_paginaAtual" TotalPaginas="totalPaginas" OnPaginaMudou="p => _paginaAtual = p" />
             </div>
         </div>
     }
@@ -258,9 +261,9 @@ else
                         <span>Papel de destino</span>
                         <InputSelect @bind-Value="_modeloTroca.PapelDestinoId">
                             <option value="@Guid.Empty">Selecione o papel de destino...</option>
-                            @if (_pagina is not null)
+                            @if (_todosPapeis is not null)
                             {
-                                @foreach (var p in _pagina.Itens.Where(x => x.Id != _papelTrocaId))
+                                @foreach (var p in _todosPapeis.Where(x => x.Id != _papelTrocaId))
                                 {
                                     <option value="@p.Id">@p.Codigo - @p.Nome</option>
                                 }
@@ -331,7 +334,7 @@ else
 }
 
 @code {
-    private PaginaResultado<PapelResponse>? _pagina;
+    private List<PapelResponse>? _todosPapeis;
     private IReadOnlyList<SegmentoResponse>? _segmentosDisponiveis;
     private string _filtroTipo = string.Empty;
     private string _busca = string.Empty;
@@ -342,10 +345,74 @@ else
     private bool _carregando;
     private bool _atualizandoCotacoes;
 
+    private string _colunaOrdenacao = "Codigo";
+    private bool _ordenacaoAscendente = true;
+    private int _paginaAtual = 1;
+    private const int _tamanhoPagina = 10;
+
     private string ObterTextoUltimaAtualizacao()
     {
-        var maiorData = _pagina?.Itens.Select(p => p.CotacaoAtualizadaEm).Where(d => d.HasValue).Max();
+        var maiorData = _todosPapeis?.Select(p => p.CotacaoAtualizadaEm).Where(d => d.HasValue).Max();
         return DataHoraHelper.FormatarUltimaAtualizacaoCotacoes(maiorData);
+    }
+
+    private void OnBuscaAlterada(ChangeEventArgs e)
+    {
+        _busca = e.Value?.ToString() ?? string.Empty;
+        _paginaAtual = 1;
+    }
+
+    private async Task OnFiltroAlteradoAsync()
+    {
+        _paginaAtual = 1;
+        await CarregarAsync();
+    }
+
+    private void OrdenarPor(string coluna)
+    {
+        if (_colunaOrdenacao == coluna)
+        {
+            _ordenacaoAscendente = !_ordenacaoAscendente;
+        }
+        else
+        {
+            _colunaOrdenacao = coluna;
+            _ordenacaoAscendente = true;
+        }
+        _paginaAtual = 1;
+    }
+
+    private string IndicadorOrdenacao(string coluna)
+    {
+        if (_colunaOrdenacao != coluna) return "↕";
+        return _ordenacaoAscendente ? "↑" : "↓";
+    }
+
+    private IEnumerable<PapelResponse> ObterItensOrdenados()
+    {
+        if (_todosPapeis is null) return [];
+        var itens = _todosPapeis.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_busca))
+        {
+            var termo = _busca.Trim();
+            itens = itens.Where(p =>
+                p.Codigo.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
+                p.Nome.Contains(termo, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return _colunaOrdenacao switch
+        {
+            "Codigo" => _ordenacaoAscendente ? itens.OrderBy(p => p.Codigo) : itens.OrderByDescending(p => p.Codigo),
+            "Nome" => _ordenacaoAscendente ? itens.OrderBy(p => p.Nome) : itens.OrderByDescending(p => p.Nome),
+            "Tipo" => _ordenacaoAscendente ? itens.OrderBy(p => p.TipoPapel) : itens.OrderByDescending(p => p.TipoPapel),
+            "Cotacao" => _ordenacaoAscendente ? itens.OrderBy(p => p.CotacaoAtual) : itens.OrderByDescending(p => p.CotacaoAtual),
+            "QtdAtual" => _ordenacaoAscendente ? itens.OrderBy(p => p.QuantidadeAtual) : itens.OrderByDescending(p => p.QuantidadeAtual),
+            "EmAluguel" => _ordenacaoAscendente ? itens.OrderBy(p => p.QuantidadeEmAluguel) : itens.OrderByDescending(p => p.QuantidadeEmAluguel),
+            "PrecoMedio" => _ordenacaoAscendente ? itens.OrderBy(p => p.PrecoMedio) : itens.OrderByDescending(p => p.PrecoMedio),
+            "Status" => _ordenacaoAscendente ? itens.OrderBy(p => p.Ativo) : itens.OrderByDescending(p => p.Ativo),
+            _ => itens.OrderBy(p => p.Codigo)
+        };
     }
 
     private async Task AtualizarCotacoesAsync()
@@ -412,8 +479,19 @@ else
         try
         {
             TipoPapel? tipo = Enum.TryParse<TipoPapel>(_filtroTipo, out var t) ? t : null;
-            _pagina = await ApiClient.ListarPapeisAsync(tipo, page: 1, pageSize: 100);
-            var resSegmentos = await ApiClient.ListarSegmentosAsync(page: 1, pageSize: 100);
+            var todos = new List<PapelResponse>();
+            var pag = 1;
+            while (true)
+            {
+                var r = await ApiClient.ListarPapeisAsync(tipo, page: pag, pageSize: 5000);
+                todos.AddRange(r.Itens);
+                if (todos.Count >= r.Total || r.Itens.Count == 0)
+                    break;
+                pag++;
+            }
+            _todosPapeis = todos;
+
+            var resSegmentos = await ApiClient.ListarSegmentosAsync(page: 1, pageSize: 500);
             _segmentosDisponiveis = resSegmentos.Itens;
         }
         catch (ApiException ex) when (ex.EhNaoAutorizado)

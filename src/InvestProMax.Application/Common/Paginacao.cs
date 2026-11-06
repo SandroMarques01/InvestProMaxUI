@@ -2,7 +2,7 @@ namespace InvestProMax.Application.Common;
 
 public sealed record ParametrosPaginacao(int Page = 1, int PageSize = 20)
 {
-    private const int TamanhoMaximo = 100;
+    private const int TamanhoMaximo = 5000;
 
     public int PaginaEfetiva => Page < 1 ? 1 : Page;
     public int TamanhoEfetivo => PageSize is < 1 or > TamanhoMaximo ? Math.Clamp(PageSize, 1, TamanhoMaximo) : PageSize;

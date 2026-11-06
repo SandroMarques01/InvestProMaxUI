@@ -87,19 +87,28 @@ else if (_linhas.Count == 0)
 }
 else
 {
+    var linhasOrdenadas = ObterLinhasOrdenadas().ToList();
+    var totalLinhas = linhasOrdenadas.Count;
+    var totalPaginasLinhas = Math.Max(1, (int)Math.Ceiling((double)totalLinhas / TamanhoPagina));
+    if (_paginaLinhas > totalPaginasLinhas) _paginaLinhas = totalPaginasLinhas;
+
+    var inicioLinhas = ((_paginaLinhas - 1) * TamanhoPagina) + 1;
+    var fimLinhas = Math.Min(_paginaLinhas * TamanhoPagina, totalLinhas);
+    var linhasPagina = linhasOrdenadas.Skip((_paginaLinhas - 1) * TamanhoPagina).Take(TamanhoPagina).ToList();
+
     <div class="table-shell table-compact" style="margin-bottom: 24px;">
         <table>
             <thead>
                 <tr>
-                    <th class="col-incluir alinhar-centro">Incluir</th>
-                    <th class="col-ativo alinhar-esquerda">Ativo</th>
-                    <th class="col-tipo alinhar-centro">Tipo</th>
-                    <th class="col-valor alinhar-direita">Valor (R$)</th>
-                    <th class="col-descricao alinhar-esquerda">Observação / Descrição</th>
+                    <th class="col-incluir alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarLinhasPor("Incluido")'>Incluir @IndicadorOrdenacaoLinhas("Incluido")</th>
+                    <th class="col-ativo alinhar-esquerda" style="cursor:pointer;" @onclick='() => OrdenarLinhasPor("Ativo")'>Ativo @IndicadorOrdenacaoLinhas("Ativo")</th>
+                    <th class="col-tipo alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarLinhasPor("Tipo")'>Tipo @IndicadorOrdenacaoLinhas("Tipo")</th>
+                    <th class="col-valor alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarLinhasPor("Valor")'>Valor (R$) @IndicadorOrdenacaoLinhas("Valor")</th>
+                    <th class="col-descricao alinhar-esquerda" style="cursor:pointer;" @onclick='() => OrdenarLinhasPor("Descricao")'>Observação / Descrição @IndicadorOrdenacaoLinhas("Descricao")</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var linha in _linhas)
+                @foreach (var linha in linhasPagina)
                 {
                     <tr>
                         <td class="col-incluir alinhar-centro">
@@ -142,11 +151,14 @@ else
             </tbody>
         </table>
         <div class="table-footer">
-            <span>@_linhas.Count(l => l.Incluido) de @_linhas.Count ativos marcados para gravação</span>
-            <button type="button" class="btn btn-primary" @onclick="SalvarLoteAsync" disabled="@_salvando">
-                <Icon Name="upload" Size="14" />
-                <span>@(_salvando ? "Salvando..." : "Salvar lançamentos da competência")</span>
-            </button>
+            <span>Mostrando @inicioLinhas–@fimLinhas de @totalLinhas ativos (@_linhas.Count(l => l.Incluido) marcados para gravação)</span>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <PaginacaoGrid PaginaAtual="_paginaLinhas" TotalPaginas="totalPaginasLinhas" OnPaginaMudou="p => _paginaLinhas = p" />
+                <button type="button" class="btn btn-primary" @onclick="SalvarLoteAsync" disabled="@_salvando">
+                    <Icon Name="upload" Size="14" />
+                    <span>@(_salvando ? "Salvando..." : "Salvar lançamentos da competência")</span>
+                </button>
+            </div>
         </div>
     </div>
 }
@@ -168,19 +180,28 @@ else
     }
     else
     {
+        var historicoOrdenado = ObterHistoricoOrdenado().ToList();
+        var totalHist = historicoOrdenado.Count;
+        var totalPaginasHist = Math.Max(1, (int)Math.Ceiling((double)totalHist / TamanhoPagina));
+        if (_paginaHistorico > totalPaginasHist) _paginaHistorico = totalPaginasHist;
+
+        var inicioHist = ((_paginaHistorico - 1) * TamanhoPagina) + 1;
+        var fimHist = Math.Min(_paginaHistorico * TamanhoPagina, totalHist);
+        var historicoPagina = historicoOrdenado.Skip((_paginaHistorico - 1) * TamanhoPagina).Take(TamanhoPagina).ToList();
+
         var totalHistorico = _historico.Sum(h => h.Valor);
         <div class="table-shell table-compact">
             <table>
                 <thead>
                     <tr>
-                        <th class="col-ativo alinhar-esquerda">Ativo</th>
-                        <th class="col-valor alinhar-direita">Valor gravado</th>
-                        <th class="col-tipo alinhar-centro">Data do registro</th>
-                        <th class="col-descricao alinhar-esquerda">Descrição</th>
+                        <th class="col-ativo alinhar-esquerda" style="cursor:pointer;" @onclick='() => OrdenarHistoricoPor("Ativo")'>Ativo @IndicadorOrdenacaoHistorico("Ativo")</th>
+                        <th class="col-valor alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarHistoricoPor("Valor")'>Valor gravado @IndicadorOrdenacaoHistorico("Valor")</th>
+                        <th class="col-tipo alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarHistoricoPor("Data")'>Data do registro @IndicadorOrdenacaoHistorico("Data")</th>
+                        <th class="col-descricao alinhar-esquerda" style="cursor:pointer;" @onclick='() => OrdenarHistoricoPor("Descricao")'>Descrição @IndicadorOrdenacaoHistorico("Descricao")</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var item in _historico)
+                    @foreach (var item in historicoPagina)
                     {
                         <tr>
                             <td class="col-ativo alinhar-esquerda"><strong>@NomeAtivo(item.AtivoId)</strong></td>
@@ -198,11 +219,17 @@ else
                     </tr>
                 </tfoot>
             </table>
+            <div class="table-footer">
+                <span>Mostrando @inicioHist–@fimHist de @totalHist lançamentos gravados</span>
+                <PaginacaoGrid PaginaAtual="_paginaHistorico" TotalPaginas="totalPaginasHist" OnPaginaMudou="p => _paginaHistorico = p" />
+            </div>
         </div>
     }
 }
 
 @code {
+    private const int TamanhoPagina = 10;
+
     private int _ano = DateTime.Today.Year;
     private int _mes = DateTime.Today.Month;
     private List<LinhaEdicaoInventario>? _linhas;
@@ -213,21 +240,86 @@ else
     private bool _salvando;
     private bool _copiando;
 
+    private string _colLinhas = "Ativo";
+    private bool _ascLinhas = true;
+    private int _paginaLinhas = 1;
+
+    private string _colHist = "Ativo";
+    private bool _ascHist = true;
+    private int _paginaHistorico = 1;
+
     protected override async Task OnInitializedAsync()
     {
         await CarregarCompetenciaAsync();
     }
 
+    private void OrdenarLinhasPor(string col)
+    {
+        if (_colLinhas == col) _ascLinhas = !_ascLinhas;
+        else { _colLinhas = col; _ascLinhas = true; }
+        _paginaLinhas = 1;
+    }
+
+    private string IndicadorOrdenacaoLinhas(string col)
+    {
+        if (_colLinhas != col) return "↕";
+        return _ascLinhas ? "↑" : "↓";
+    }
+
+    private IEnumerable<LinhaEdicaoInventario> ObterLinhasOrdenadas()
+    {
+        if (_linhas is null) return [];
+        var itens = _linhas.AsEnumerable();
+        return _colLinhas switch
+        {
+            "Incluido" => _ascLinhas ? itens.OrderBy(l => l.Incluido) : itens.OrderByDescending(l => l.Incluido),
+            "Ativo" => _ascLinhas ? itens.OrderBy(l => l.AtivoNome) : itens.OrderByDescending(l => l.AtivoNome),
+            "Tipo" => _ascLinhas ? itens.OrderBy(l => l.TipoAtivo) : itens.OrderByDescending(l => l.TipoAtivo),
+            "Valor" => _ascLinhas ? itens.OrderBy(l => l.Valor) : itens.OrderByDescending(l => l.Valor),
+            "Descricao" => _ascLinhas ? itens.OrderBy(l => l.Descricao ?? string.Empty) : itens.OrderByDescending(l => l.Descricao ?? string.Empty),
+            _ => itens.OrderBy(l => l.AtivoNome)
+        };
+    }
+
+    private void OrdenarHistoricoPor(string col)
+    {
+        if (_colHist == col) _ascHist = !_ascHist;
+        else { _colHist = col; _ascHist = true; }
+        _paginaHistorico = 1;
+    }
+
+    private string IndicadorOrdenacaoHistorico(string col)
+    {
+        if (_colHist != col) return "↕";
+        return _ascHist ? "↑" : "↓";
+    }
+
+    private IEnumerable<InventarioResponse> ObterHistoricoOrdenado()
+    {
+        if (_historico is null) return [];
+        var itens = _historico.AsEnumerable();
+        return _colHist switch
+        {
+            "Ativo" => _ascHist ? itens.OrderBy(h => NomeAtivo(h.AtivoId)) : itens.OrderByDescending(h => NomeAtivo(h.AtivoId)),
+            "Valor" => _ascHist ? itens.OrderBy(h => h.Valor) : itens.OrderByDescending(h => h.Valor),
+            "Data" => _ascHist ? itens.OrderBy(h => h.Data) : itens.OrderByDescending(h => h.Data),
+            "Descricao" => _ascHist ? itens.OrderBy(h => h.Descricao ?? string.Empty) : itens.OrderByDescending(h => h.Descricao ?? string.Empty),
+            _ => itens.OrderBy(h => NomeAtivo(h.AtivoId))
+        };
+    }
+
     private async Task CarregarCompetenciaAsync()
     {
         _mensagemErro = null;
+        _paginaLinhas = 1;
+        _paginaHistorico = 1;
         try
         {
-            var r = await ApiClient.ListarAtivosAsync(page: 1, pageSize: 100);
+            var r = await ApiClient.ListarAtivosAsync(page: 1, pageSize: 5000);
             _ativos = r.Itens;
 
             var sugestoes = await ApiClient.ObterSugestaoCalculadaAsync(_ano, _mes);
-            var invResp = await ApiClient.ListarInventarioAsync(ano: _ano, mes: _mes, page: 1, pageSize: 100);
+            var invResp = await ApiClient.ListarInventarioAsync(ano: _ano, mes: _mes, page: 1, pageSize: 5000);
             _historico = invResp.Itens;
 
             _linhas = _ativos
@@ -272,7 +364,7 @@ else
             var anoAnterior = _mes == 1 ? _ano - 1 : _ano;
             var mesAnterior = _mes == 1 ? 12 : _mes - 1;
 
-            var invAnterior = await ApiClient.ListarInventarioAsync(ano: anoAnterior, mes: mesAnterior, page: 1, pageSize: 100);
+            var invAnterior = await ApiClient.ListarInventarioAsync(ano: anoAnterior, mes: mesAnterior, page: 1, pageSize: 5000);
             if (invAnterior.Itens.Count == 0)
             {
                 _mensagemErro = $"Não há lançamentos gravados na competência anterior ({mesAnterior:00}/{anoAnterior}) para copiar.";

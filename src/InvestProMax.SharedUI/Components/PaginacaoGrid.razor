@@ -1,0 +1,80 @@
+@namespace InvestProMax.SharedUI.Components
+
+@if (TotalPaginas > 1)
+{
+    <div class="pagination">
+        <button type="button" @onclick="() => IrParaPaginaAsync(PaginaAtual - 1)" disabled="@(PaginaAtual <= 1)" title="Página anterior">‹</button>
+        @foreach (var item in ObterItensPaginacao())
+        {
+            if (item <= 0)
+            {
+                <span class="pagination-ellipsis">…</span>
+            }
+            else
+            {
+                var numPagina = item;
+                <button type="button" class="@(numPagina == PaginaAtual ? "active" : "")" @onclick="() => IrParaPaginaAsync(numPagina)">@numPagina</button>
+            }
+        }
+        <button type="button" @onclick="() => IrParaPaginaAsync(PaginaAtual + 1)" disabled="@(PaginaAtual >= TotalPaginas)" title="Próxima página">›</button>
+    </div>
+}
+
+@code {
+    [Parameter] public int PaginaAtual { get; set; } = 1;
+    [Parameter] public int TotalPaginas { get; set; } = 1;
+    [Parameter] public EventCallback<int> OnPaginaMudou { get; set; }
+
+    private async Task IrParaPaginaAsync(int novaPagina)
+    {
+        if (novaPagina < 1 || novaPagina > TotalPaginas || novaPagina == PaginaAtual)
+            return;
+
+        await OnPaginaMudou.InvokeAsync(novaPagina);
+    }
+
+    private IEnumerable<int> ObterItensPaginacao()
+    {
+        if (TotalPaginas <= 7)
+        {
+            for (var p = 1; p <= TotalPaginas; p++)
+            {
+                yield return p;
+            }
+            yield break;
+        }
+
+        yield return 1;
+
+        var inicioJanela = Math.Max(2, PaginaAtual - 1);
+        var fimJanela = Math.Min(TotalPaginas - 1, PaginaAtual + 1);
+
+        if (PaginaAtual <= 3)
+        {
+            inicioJanela = 2;
+            fimJanela = Math.Min(TotalPaginas - 1, 4);
+        }
+        else if (PaginaAtual >= TotalPaginas - 2)
+        {
+            inicioJanela = Math.Max(2, TotalPaginas - 3);
+            fimJanela = TotalPaginas - 1;
+        }
+
+        if (inicioJanela > 2)
+        {
+            yield return -1;
+        }
+
+        for (var p = inicioJanela; p <= fimJanela; p++)
+        {
+            yield return p;
+        }
+
+        if (fimJanela < TotalPaginas - 1)
+        {
+            yield return -2;
+        }
+
+        yield return TotalPaginas;
+    }
+}

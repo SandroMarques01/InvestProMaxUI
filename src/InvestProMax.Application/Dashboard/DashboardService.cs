@@ -43,6 +43,10 @@ public sealed class DashboardService : IDashboardService
         decimal totalInvestidoCarteira = 0m;
         decimal totalAtualCarteira = 0m;
         var valoresAlocacao = new List<(TipoPapel Tipo, decimal Valor)>();
+        var dividendosPorPapel = dividendos
+            .GroupBy(d => d.PapelId)
+            .ToDictionary(g => g.Key, g => g.Sum(d => d.ValorRecebido));
+        var candidatosTopPapeis = new List<TopPapelDashboard>();
 
         foreach (var papel in papeis)
         {
@@ -55,8 +59,24 @@ public sealed class DashboardService : IDashboardService
                 totalInvestidoCarteira += valorInvestido;
                 totalAtualCarteira += valorAtual;
                 valoresAlocacao.Add((papel.TipoPapel, valorAtual));
+
+                var dividendosPapel = dividendosPorPapel.TryGetValue(papel.Id, out var somaDiv)
+                    ? somaDiv
+                    : papel.Dividendos.Sum(d => d.ValorRecebido);
+
+                candidatosTopPapeis.Add(new TopPapelDashboard(
+                    PapelId: papel.Id,
+                    Codigo: papel.Codigo,
+                    ValorTotalAtual: valorAtual,
+                    DividendosTotal: dividendosPapel));
             }
         }
+
+        var topPapeis = candidatosTopPapeis
+            .OrderByDescending(p => p.ValorTotalAtual)
+            .ThenBy(p => p.Codigo)
+            .Take(10)
+            .ToList();
 
         var ganhoTotalCarteira = totalAtualCarteira - totalInvestidoCarteira;
 
@@ -107,7 +127,8 @@ public sealed class DashboardService : IDashboardService
             DividendosPorMesETipo: dividendosPorMesETipo,
             EvolucaoCapital: evolucaoCapital,
             AlocacaoPorTipoPapel: alocacao,
-            DividendosNoMes: dividendosNoMes);
+            DividendosNoMes: dividendosNoMes,
+            TopPapeis: topPapeis);
     }
 
     private static IReadOnlyList<DividendoPorMes> CalcularDividendosUltimos12Meses(IReadOnlyList<Dividendo> dividendos)
@@ -215,4 +236,3 @@ public sealed class DashboardService : IDashboardService
         return resultado;
     }
 }
-

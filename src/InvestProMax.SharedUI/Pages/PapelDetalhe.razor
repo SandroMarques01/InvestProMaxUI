@@ -155,24 +155,33 @@ else
         }
         else
         {
+            var transacoesOrdenadas = ObterTransacoesOrdenadas().ToList();
+            var totalTransacoes = transacoesOrdenadas.Count;
+            var totalPaginasTrans = Math.Max(1, (int)Math.Ceiling((double)totalTransacoes / TamanhoPagina));
+            if (_paginaTransacoes > totalPaginasTrans) _paginaTransacoes = totalPaginasTrans;
+
+            var inicioTrans = ((_paginaTransacoes - 1) * TamanhoPagina) + 1;
+            var fimTrans = Math.Min(_paginaTransacoes * TamanhoPagina, totalTransacoes);
+            var itensTransPagina = transacoesOrdenadas.Skip((_paginaTransacoes - 1) * TamanhoPagina).Take(TamanhoPagina).ToList();
+
             <div class="table-shell">
                 <table>
                     <thead>
                         <tr>
-                            <th>Data</th>
-                            <th class="alinhar-direita">Valor unit.</th>
-                            <th class="alinhar-direita">Quantidade</th>
-                            <th class="alinhar-direita">Total</th>
-                            <th class="alinhar-direita">Evolução</th>
-                            <th class="alinhar-direita">$ Atual</th>
-                            <th class="alinhar-direita">$ Ganho</th>
-                            <th class="alinhar-direita">Evolução atual</th>
-                            <th class="alinhar-centro">Tipo</th>
-                            <th>Descrição</th>
+                            <th style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("Data")'>Data @IndicadorOrdenacaoTransacoes("Data")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("ValorUnitario")'>Valor unit. @IndicadorOrdenacaoTransacoes("ValorUnitario")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("Quantidade")'>Quantidade @IndicadorOrdenacaoTransacoes("Quantidade")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("Total")'>Total @IndicadorOrdenacaoTransacoes("Total")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("Evolucao")'>Evolução @IndicadorOrdenacaoTransacoes("Evolucao")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("CotacaoAtual")'>$ Atual @IndicadorOrdenacaoTransacoes("CotacaoAtual")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("GanhoUnitario")'>$ Ganho @IndicadorOrdenacaoTransacoes("GanhoUnitario")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("EvolucaoAtual")'>Evolução atual @IndicadorOrdenacaoTransacoes("EvolucaoAtual")</th>
+                            <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("Tipo")'>Tipo @IndicadorOrdenacaoTransacoes("Tipo")</th>
+                            <th style="cursor:pointer;" @onclick='() => OrdenarTransacoesPor("Descricao")'>Descrição @IndicadorOrdenacaoTransacoes("Descricao")</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var t in _detalhe.Transacoes)
+                        @foreach (var t in itensTransPagina)
                         {
                             var ehGanhoPositivo = t.GanhoUnitario >= 0;
                             <tr>
@@ -196,7 +205,8 @@ else
                 </table>
                 <div class="table-footer">
                     <strong>Total atual: @Moeda(totalAtual)</strong>
-                    <span>@_detalhe.Transacoes.Count registros exibidos</span>
+                    <span>Mostrando @inicioTrans–@fimTrans de @totalTransacoes registros</span>
+                    <PaginacaoGrid PaginaAtual="_paginaTransacoes" TotalPaginas="totalPaginasTrans" OnPaginaMudou="p => _paginaTransacoes = p" />
                 </div>
             </div>
         }
@@ -213,27 +223,36 @@ else
         }
         else
         {
+            var dividendosOrdenados = ObterDividendosOrdenados().ToList();
+            var totalDividendos = dividendosOrdenados.Count;
+            var totalPaginasDiv = Math.Max(1, (int)Math.Ceiling((double)totalDividendos / TamanhoPagina));
+            if (_paginaDividendos > totalPaginasDiv) _paginaDividendos = totalPaginasDiv;
+
+            var inicioDiv = ((_paginaDividendos - 1) * TamanhoPagina) + 1;
+            var fimDiv = Math.Min(_paginaDividendos * TamanhoPagina, totalDividendos);
+            var itensDivPagina = dividendosOrdenados.Skip((_paginaDividendos - 1) * TamanhoPagina).Take(TamanhoPagina).ToList();
+
             var totalProventos = _detalhe.Dividendos.Sum(d => d.ValorRecebido);
             <div class="table-shell">
                 <table>
                     <thead>
                         <tr>
-                            <th>Data</th>
-                            <th class="alinhar-direita">Valor recebido</th>
-                            <th class="alinhar-direita">Qtd</th>
-                            <th class="alinhar-direita">Valor unit.</th>
-                            <th class="alinhar-direita">$ Médio</th>
-                            <th class="alinhar-direita">Yield on Cost</th>
-                            <th class="alinhar-direita">$ Atual</th>
-                            <th class="alinhar-direita">DY %</th>
-                            <th class="alinhar-direita">Evolução</th>
-                            <th class="alinhar-direita">Evolução %</th>
-                            <th class="alinhar-centro">Tipo</th>
-                            <th>Descrição</th>
+                            <th style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("Data")'>Data @IndicadorOrdenacaoDividendos("Data")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("ValorRecebido")'>Valor recebido @IndicadorOrdenacaoDividendos("ValorRecebido")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("Quantidade")'>Qtd @IndicadorOrdenacaoDividendos("Quantidade")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("ValorUnitario")'>Valor unit. @IndicadorOrdenacaoDividendos("ValorUnitario")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("PrecoMedio")'>$ Médio @IndicadorOrdenacaoDividendos("PrecoMedio")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("YieldOnCost")'>Yield on Cost @IndicadorOrdenacaoDividendos("YieldOnCost")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("CotacaoAtual")'>$ Atual @IndicadorOrdenacaoDividendos("CotacaoAtual")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("DyPercentual")'>DY % @IndicadorOrdenacaoDividendos("DyPercentual")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("Evolucao")'>Evolução @IndicadorOrdenacaoDividendos("Evolucao")</th>
+                            <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("EvolucaoPercentual")'>Evolução % @IndicadorOrdenacaoDividendos("EvolucaoPercentual")</th>
+                            <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("Tipo")'>Tipo @IndicadorOrdenacaoDividendos("Tipo")</th>
+                            <th style="cursor:pointer;" @onclick='() => OrdenarDividendosPor("Descricao")'>Descrição @IndicadorOrdenacaoDividendos("Descricao")</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var d in _detalhe.Dividendos)
+                        @foreach (var d in itensDivPagina)
                         {
                             <tr>
                                 <td>@Data(d.Data)</td>
@@ -256,7 +275,8 @@ else
                 </table>
                 <div class="table-footer">
                     <strong>Total recebido: @Moeda(totalProventos)</strong>
-                    <span>@_detalhe.Dividendos.Count proventos exibidos</span>
+                    <span>Mostrando @inicioDiv–@fimDiv de @totalDividendos proventos</span>
+                    <PaginacaoGrid PaginaAtual="_paginaDividendos" TotalPaginas="totalPaginasDiv" OnPaginaMudou="p => _paginaDividendos = p" />
                 </div>
             </div>
         }
@@ -265,6 +285,7 @@ else
 
 @code {
     private static readonly CultureInfo Br = new("pt-BR");
+    private const int TamanhoPagina = 10;
 
     [Parameter]
     public Guid Id { get; set; }
@@ -273,8 +294,18 @@ else
     private string? _mensagemErro;
     private string _abaAtiva = "transacoes";
 
+    private string _colTrans = "Data";
+    private bool _ascTrans = false;
+    private int _paginaTransacoes = 1;
+
+    private string _colDiv = "Data";
+    private bool _ascDiv = false;
+    private int _paginaDividendos = 1;
+
     protected override async Task OnParametersSetAsync()
     {
+        _paginaTransacoes = 1;
+        _paginaDividendos = 1;
         await CarregarAsync();
     }
 
@@ -297,6 +328,88 @@ else
         {
             _mensagemErro = "Erro ao carregar detalhes: " + ex.Message;
         }
+    }
+
+    private void OrdenarTransacoesPor(string coluna)
+    {
+        if (_colTrans == coluna)
+        {
+            _ascTrans = !_ascTrans;
+        }
+        else
+        {
+            _colTrans = coluna;
+            _ascTrans = true;
+        }
+        _paginaTransacoes = 1;
+    }
+
+    private string IndicadorOrdenacaoTransacoes(string coluna)
+    {
+        if (_colTrans != coluna) return "↕";
+        return _ascTrans ? "↑" : "↓";
+    }
+
+    private IEnumerable<TransacaoDetalheItem> ObterTransacoesOrdenadas()
+    {
+        if (_detalhe is null) return [];
+        var itens = _detalhe.Transacoes.AsEnumerable();
+        return _colTrans switch
+        {
+            "Data" => _ascTrans ? itens.OrderBy(t => t.Data) : itens.OrderByDescending(t => t.Data),
+            "ValorUnitario" => _ascTrans ? itens.OrderBy(t => t.ValorUnitario) : itens.OrderByDescending(t => t.ValorUnitario),
+            "Quantidade" => _ascTrans ? itens.OrderBy(t => t.Quantidade) : itens.OrderByDescending(t => t.Quantidade),
+            "Total" => _ascTrans ? itens.OrderBy(t => t.Total) : itens.OrderByDescending(t => t.Total),
+            "Evolucao" => _ascTrans ? itens.OrderBy(t => t.Evolucao) : itens.OrderByDescending(t => t.Evolucao),
+            "CotacaoAtual" => _ascTrans ? itens.OrderBy(t => t.CotacaoAtual) : itens.OrderByDescending(t => t.CotacaoAtual),
+            "GanhoUnitario" => _ascTrans ? itens.OrderBy(t => t.GanhoUnitario) : itens.OrderByDescending(t => t.GanhoUnitario),
+            "EvolucaoAtual" => _ascTrans ? itens.OrderBy(t => t.EvolucaoAtual) : itens.OrderByDescending(t => t.EvolucaoAtual),
+            "Tipo" => _ascTrans ? itens.OrderBy(t => t.TipoTransacao) : itens.OrderByDescending(t => t.TipoTransacao),
+            "Descricao" => _ascTrans ? itens.OrderBy(t => t.Descricao ?? string.Empty) : itens.OrderByDescending(t => t.Descricao ?? string.Empty),
+            _ => itens.OrderByDescending(t => t.Data)
+        };
+    }
+
+    private void OrdenarDividendosPor(string coluna)
+    {
+        if (_colDiv == coluna)
+        {
+            _ascDiv = !_ascDiv;
+        }
+        else
+        {
+            _colDiv = coluna;
+            _ascDiv = true;
+        }
+        _paginaDividendos = 1;
+    }
+
+    private string IndicadorOrdenacaoDividendos(string coluna)
+    {
+        if (_colDiv != coluna) return "↕";
+        return _ascDiv ? "↑" : "↓";
+    }
+
+    private IEnumerable<DividendoDetalheItem> ObterDividendosOrdenados()
+    {
+        if (_detalhe is null) return [];
+        var itens = _detalhe.Dividendos.AsEnumerable();
+        return _colDiv switch
+        {
+            "Data" => _ascDiv ? itens.OrderBy(d => d.Data) : itens.OrderByDescending(d => d.Data),
+            "ValorRecebido" => _ascDiv ? itens.OrderBy(d => d.ValorRecebido) : itens.OrderByDescending(d => d.ValorRecebido),
+            "Quantidade" => _ascDiv ? itens.OrderBy(d => d.Quantidade) : itens.OrderByDescending(d => d.Quantidade),
+            "ValorUnitario" => _ascDiv ? itens.OrderBy(d => d.ValorUnitario) : itens.OrderByDescending(d => d.ValorUnitario),
+            "PrecoMedio" => _ascDiv ? itens.OrderBy(d => d.PrecoMedio) : itens.OrderByDescending(d => d.PrecoMedio),
+            "YieldOnCost" => _ascDiv ? itens.OrderBy(d => d.YieldOnCostPercentual) : itens.OrderByDescending(d => d.YieldOnCostPercentual),
+            "CotacaoAtual" => _ascDiv ? itens.OrderBy(d => d.CotacaoAtual) : itens.OrderByDescending(d => d.CotacaoAtual),
+            "DyPercentual" => _ascDiv ? itens.OrderBy(d => d.DyPercentual) : itens.OrderByDescending(d => d.DyPercentual),
+            "Evolucao" => _ascDiv ? itens.OrderBy(d => d.Evolucao) : itens.OrderByDescending(d => d.Evolucao),
+            "EvolucaoPercentual" => _ascDiv ? itens.OrderBy(d => d.EvolucaoPercentual) : itens.OrderByDescending(d => d.EvolucaoPercentual),
+            "Tipo" => _ascDiv ? itens.OrderBy(d => d.TipoDividendo) : itens.OrderByDescending(d => d.TipoDividendo),
+            "Descricao" => _ascDiv ? itens.OrderBy(d => d.Descricao ?? string.Empty) : itens.OrderByDescending(d => d.Descricao ?? string.Empty),
+            _ => itens.OrderByDescending(d => d.Data)
+        };
     }
 
     private static string Moeda(decimal v) => v.ToString("C2", Br);

@@ -54,7 +54,7 @@
 
     <label class="field" style="width: 150px;">
         <span>Tipo de provento</span>
-        <select @bind="_filtroTipo" @bind:after="FiltrarAsync">
+        <select @bind="_filtroTipo" @bind:after="OnFiltroLocalAlterado">
             <option value="">Todos os tipos</option>
             @foreach (var tipo in Enum.GetValues<TipoDividendo>())
             {
@@ -75,11 +75,11 @@
 
     <div class="search-field" style="margin-top: 19px;">
         <Icon Name="search" Size="16" />
-        <input type="text" placeholder="Filtrar por descrição..." @bind="_buscaTexto" @bind:event="oninput" />
+        <input type="text" placeholder="Filtrar por descrição..." value="@_buscaTexto" @oninput="OnBuscaAlterada" />
     </div>
 </div>
 
-@if (_mensagemErro is not null && _pagina is null)
+@if (_mensagemErro is not null && _todosDividendos is null)
 {
     <div class="card state-card">
         <div class="empty-icon" style="color: var(--danger); background: var(--danger-soft);">
@@ -92,32 +92,22 @@
         </button>
     </div>
 }
-else if (_pagina is null)
+else if (_todosDividendos is null)
 {
     <LoadingState Mensagem="Carregando dividendos..." Subtitulo="Recuperando histórico de proventos e rendimentos." />
 }
 else
 {
-    var itens = _pagina.Itens.AsEnumerable();
-    if (!string.IsNullOrWhiteSpace(_filtroTipo))
-    {
-        if (Enum.TryParse<TipoDividendo>(_filtroTipo, out var t))
-        {
-            itens = itens.Where(x => x.TipoDividendo == t);
-        }
-    }
-    if (!string.IsNullOrWhiteSpace(_buscaTexto))
-    {
-        itens = itens.Where(x => (x.Descricao ?? string.Empty).Contains(_buscaTexto, StringComparison.OrdinalIgnoreCase));
-    }
-    var lista = itens.ToList();
-    var totalRegistros = _pagina.Total;
-    var totalPaginas = (int)Math.Ceiling((double)totalRegistros / _tamanhoPagina);
-    if (totalPaginas < 1) totalPaginas = 1;
+    var listaCompleta = ObterItensOrdenados().ToList();
+    var totalRegistros = listaCompleta.Count;
+    var totalPaginas = Math.Max(1, (int)Math.Ceiling((double)totalRegistros / _tamanhoPagina));
+    if (_paginaAtual > totalPaginas) _paginaAtual = totalPaginas;
+
     var inicio = totalRegistros == 0 ? 0 : ((_paginaAtual - 1) * _tamanhoPagina) + 1;
     var fim = Math.Min(_paginaAtual * _tamanhoPagina, totalRegistros);
+    var listaPagina = listaCompleta.Skip((_paginaAtual - 1) * _tamanhoPagina).Take(_tamanhoPagina).ToList();
 
-    if (lista.Count == 0)
+    if (totalRegistros == 0)
     {
         <div class="card state-card">
             <div class="empty-icon"><Icon Name="dividend" Size="28" /></div>
@@ -130,24 +120,24 @@ else
     }
     else
     {
-        var totalRecebido = lista.Sum(d => d.ValorRecebido);
+        var totalRecebido = listaPagina.Sum(d => d.ValorRecebido);
         <div class="table-shell">
             <table>
                 <thead>
                     <tr>
-                        <th>Papel</th>
-                        <th class="alinhar-centro">Tipo</th>
-                        <th class="alinhar-direita">Valor recebido</th>
-                        <th class="alinhar-direita">Quantidade base</th>
-                        <th class="alinhar-direita">Valor unitário</th>
-                        <th class="alinhar-centro">Data</th>
-                        <th class="alinhar-centro">Histórico</th>
-                        <th>Descrição</th>
+                        <th style="cursor:pointer;" @onclick='() => OrdenarPor("Papel")'>Papel @IndicadorOrdenacao("Papel")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarPor("Tipo")'>Tipo @IndicadorOrdenacao("Tipo")</th>
+                        <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarPor("ValorRecebido")'>Valor recebido @IndicadorOrdenacao("ValorRecebido")</th>
+                        <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarPor("Quantidade")'>Quantidade base @IndicadorOrdenacao("Quantidade")</th>
+                        <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarPor("ValorUnitario")'>Valor unitário @IndicadorOrdenacao("ValorUnitario")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarPor("Data")'>Data @IndicadorOrdenacao("Data")</th>
+                        <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarPor("Historico")'>Histórico @IndicadorOrdenacao("Historico")</th>
+                        <th style="cursor:pointer;" @onclick='() => OrdenarPor("Descricao")'>Descrição @IndicadorOrdenacao("Descricao")</th>
                         <th class="alinhar-direita">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var dividendo in lista)
+                    @foreach (var dividendo in listaPagina)
                     {
                         var unitario = dividendo.Quantidade > 0 ? dividendo.ValorRecebido / dividendo.Quantidade : 0m;
                         <tr>
@@ -179,19 +169,8 @@ else
             </table>
             <div class="table-footer">
                 <strong>Total recebido (página): @totalRecebido.ToString("C2")</strong>
-                <span>Mostrando @inicio–@fim de @_pagina.Total proventos</span>
-                @if (totalPaginas > 1)
-                {
-                    <div class="pagination">
-                        <button type="button" @onclick="() => MudarPagina(_paginaAtual - 1)" disabled="@(_paginaAtual <= 1)">‹</button>
-                        @for (var p = 1; p <= totalPaginas; p++)
-                        {
-                            var numPagina = p;
-                            <button type="button" class="@(numPagina == _paginaAtual ? "active" : "")" @onclick="() => MudarPagina(numPagina)">@numPagina</button>
-                        }
-                        <button type="button" @onclick="() => MudarPagina(_paginaAtual + 1)" disabled="@(_paginaAtual >= totalPaginas)">›</button>
-                    </div>
-                }
+                <span>Mostrando @inicio–@fim de @totalRegistros proventos</span>
+                <PaginacaoGrid PaginaAtual="_paginaAtual" TotalPaginas="totalPaginas" OnPaginaMudou="MudarPagina" />
             </div>
         </div>
     }
@@ -280,7 +259,7 @@ else
 }
 
 @code {
-    private PaginaResultado<DividendoResponse>? _pagina;
+    private List<DividendoResponse>? _todosDividendos;
     private IReadOnlyList<PapelResponse>? _papeis;
     private string _filtroPapelId = string.Empty;
     private string _filtroTipoPapel = string.Empty;
@@ -292,8 +271,10 @@ else
     private string? _mensagemSucesso;
     private bool _salvando;
 
+    private string _colunaOrdenacao = "Data";
+    private bool _ordenacaoAscendente = false;
     private int _paginaAtual = 1;
-    private const int _tamanhoPagina = 20;
+    private const int _tamanhoPagina = 10;
 
     private Guid? _editandoId;
     private FormDividendo? _modelo;
@@ -309,11 +290,75 @@ else
         await CarregarAsync();
     }
 
-    private async Task MudarPagina(int novaPagina)
+    private void OnFiltroLocalAlterado()
+    {
+        _paginaAtual = 1;
+    }
+
+    private void OnBuscaAlterada(ChangeEventArgs e)
+    {
+        _buscaTexto = e.Value?.ToString() ?? string.Empty;
+        _paginaAtual = 1;
+    }
+
+    private void MudarPagina(int novaPagina)
     {
         if (novaPagina < 1) return;
         _paginaAtual = novaPagina;
-        await CarregarAsync();
+    }
+
+    private void OrdenarPor(string coluna)
+    {
+        if (_colunaOrdenacao == coluna)
+        {
+            _ordenacaoAscendente = !_ordenacaoAscendente;
+        }
+        else
+        {
+            _colunaOrdenacao = coluna;
+            _ordenacaoAscendente = true;
+        }
+        _paginaAtual = 1;
+    }
+
+    private string IndicadorOrdenacao(string coluna)
+    {
+        if (_colunaOrdenacao != coluna) return "↕";
+        return _ordenacaoAscendente ? "↑" : "↓";
+    }
+
+    private IEnumerable<DividendoResponse> ObterItensOrdenados()
+    {
+        if (_todosDividendos is null) return [];
+        var itens = _todosDividendos.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_filtroTipo) && Enum.TryParse<TipoDividendo>(_filtroTipo, out var t))
+        {
+            itens = itens.Where(x => x.TipoDividendo == t);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_buscaTexto))
+        {
+            var termo = _buscaTexto.Trim();
+            itens = itens.Where(x =>
+                (x.Descricao ?? string.Empty).Contains(termo, StringComparison.OrdinalIgnoreCase) ||
+                NomePapel(x.PapelId).Contains(termo, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return _colunaOrdenacao switch
+        {
+            "Papel" => _ordenacaoAscendente ? itens.OrderBy(x => NomePapel(x.PapelId)) : itens.OrderByDescending(x => NomePapel(x.PapelId)),
+            "Tipo" => _ordenacaoAscendente ? itens.OrderBy(x => x.TipoDividendo) : itens.OrderByDescending(x => x.TipoDividendo),
+            "ValorRecebido" => _ordenacaoAscendente ? itens.OrderBy(x => x.ValorRecebido) : itens.OrderByDescending(x => x.ValorRecebido),
+            "Quantidade" => _ordenacaoAscendente ? itens.OrderBy(x => x.Quantidade) : itens.OrderByDescending(x => x.Quantidade),
+            "ValorUnitario" => _ordenacaoAscendente
+                ? itens.OrderBy(x => x.Quantidade > 0 ? x.ValorRecebido / x.Quantidade : 0m)
+                : itens.OrderByDescending(x => x.Quantidade > 0 ? x.ValorRecebido / x.Quantidade : 0m),
+            "Data" => _ordenacaoAscendente ? itens.OrderBy(x => x.Data).ThenBy(x => x.Id) : itens.OrderByDescending(x => x.Data).ThenBy(x => x.Id),
+            "Historico" => _ordenacaoAscendente ? itens.OrderBy(x => x.Historico) : itens.OrderByDescending(x => x.Historico),
+            "Descricao" => _ordenacaoAscendente ? itens.OrderBy(x => x.Descricao ?? string.Empty) : itens.OrderByDescending(x => x.Descricao ?? string.Empty),
+            _ => itens.OrderByDescending(x => x.Data)
+        };
     }
 
     private async Task CarregarPapeisAsync()
@@ -322,7 +367,7 @@ else
         var pagina = 1;
         while (true)
         {
-            var r = await ApiClient.ListarPapeisAsync(page: pagina, pageSize: 100);
+            var r = await ApiClient.ListarPapeisAsync(page: pagina, pageSize: 5000);
             todos.AddRange(r.Itens);
             if (todos.Count >= r.Total || r.Itens.Count == 0)
             {
@@ -346,13 +391,42 @@ else
             Guid? papelId = Guid.TryParse(_filtroPapelId, out var id) ? id : null;
             TipoPapel? tipoPapel = Enum.TryParse<TipoPapel>(_filtroTipoPapel, out var tp) ? tp : null;
 
-            _pagina = await ApiClient.ListarDividendosAsync(
+            var primeira = await ApiClient.ListarDividendosAsync(
                 papelId: papelId,
                 tipoPapel: tipoPapel,
                 dataInicio: _filtroDataInicio,
                 dataFim: _filtroDataFim,
-                page: _paginaAtual,
-                pageSize: _tamanhoPagina);
+                page: 1,
+                pageSize: 5000);
+
+            var todos = new List<DividendoResponse>(primeira.Total);
+            todos.AddRange(primeira.Itens);
+
+            if (todos.Count < primeira.Total && primeira.Itens.Count > 0)
+            {
+                var tamanhoEfetivo = primeira.Itens.Count;
+                var totalPaginasApi = (int)Math.Ceiling((double)primeira.Total / tamanhoEfetivo);
+                var tarefas = new List<Task<PaginaResultado<DividendoResponse>>>();
+                for (var p = 2; p <= totalPaginasApi; p++)
+                {
+                    var pag = p;
+                    tarefas.Add(ApiClient.ListarDividendosAsync(
+                        papelId: papelId,
+                        tipoPapel: tipoPapel,
+                        dataInicio: _filtroDataInicio,
+                        dataFim: _filtroDataFim,
+                        page: pag,
+                        pageSize: tamanhoEfetivo));
+                }
+
+                var resultados = await Task.WhenAll(tarefas);
+                foreach (var res in resultados)
+                {
+                    todos.AddRange(res.Itens);
+                }
+            }
+
+            _todosDividendos = todos;
         }
         catch (ApiException ex) when (ex.EhNaoAutorizado)
         {
