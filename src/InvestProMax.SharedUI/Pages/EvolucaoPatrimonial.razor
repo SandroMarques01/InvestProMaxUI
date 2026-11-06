@@ -18,12 +18,21 @@
     <div class="competence-group">
         <span class="competence-tag">
             <Icon Name="calendar" Size="16" />
-            <span>Ano de referência:</span>
+            <span>Visão:</span>
         </span>
-        <div class="competence-field">
-            <label for="ano-evolucao">Ano</label>
-            <input id="ano-evolucao" type="number" style="width: 85px;" @bind="_ano" @bind:after="CarregarAsync" />
+        <div class="chart-toggle" style="margin-right: 6px;">
+            <button type="button" class="@(!_visaoAnual ? "active" : "")" @onclick="() => AlterarVisaoAsync(false)">Por mês</button>
+            <button type="button" class="@(_visaoAnual ? "active" : "")" @onclick="() => AlterarVisaoAsync(true)">Por ano</button>
         </div>
+
+        @if (!_visaoAnual)
+        {
+            <div class="competence-field">
+                <label for="ano-evolucao">Ano</label>
+                <input id="ano-evolucao" type="number" style="width: 85px;" @bind="_ano" @bind:after="CarregarAsync" />
+            </div>
+        }
+
         <div class="competence-field" style="margin-left: 8px;">
             <label for="filtro-tipo">Tipo</label>
             <select id="filtro-tipo" style="width: 150px;" @bind="_filtroTipo" @bind:after="AjustarSelecaoAposFiltro">
@@ -37,11 +46,11 @@
     </div>
     @if (_linhas is not null && _linhas.Count > 0)
     {
-        var ultimoMesComDados = ObterUltimoMesComDados();
-        var totalUltimoMes = ultimoMesComDados > 0 ? ObterTotalMes(ultimoMesComDados) : 0m;
+        var ultimoPeriodo = ObterUltimoPeriodoComDados();
+        var totalUltimo = ultimoPeriodo > 0 ? ObterTotalPeriodo(ultimoPeriodo) : 0m;
         <div class="competence-total">
-            <span class="label-total">@(ultimoMesComDados > 0 ? $"Patrimônio ({NomeMesCurto(ultimoMesComDados)}/{_ano}):" : $"Patrimônio ({_ano}):")</span>
-            <strong>@FormatarMoeda(totalUltimoMes)</strong>
+            <span class="label-total">@(ultimoPeriodo > 0 ? $"Patrimônio ({ObterRotuloPeriodo(ultimoPeriodo)}):" : "Patrimônio:")</span>
+            <strong>@FormatarMoeda(totalUltimo)</strong>
         </div>
     }
 </div>
@@ -61,19 +70,20 @@
 }
 else if (_carregando || _linhas is null)
 {
-    <LoadingState Mensagem="Calculando evolução patrimonial do ano..." Subtitulo="Consolidando os lançamentos mensais e variações de cada ativo." />
+    <LoadingState Mensagem="@(_visaoAnual ? "Calculando evolução patrimonial anual..." : "Calculando evolução patrimonial do ano...")"
+                  Subtitulo="@(_visaoAnual ? "Consolidando os inventários de fechamento de cada ano." : "Consolidando os lançamentos mensais e variações de cada ativo.")" />
 }
 else
 {
     var linhasFiltradas = ObterLinhasFiltradas();
-    var mesesVisiveis = ObterMesesVisiveis();
+    var periodosVisiveis = ObterPeriodosVisiveis();
 
-    @if (linhasFiltradas.Count == 0 || mesesVisiveis.Count == 0)
+    @if (linhasFiltradas.Count == 0 || periodosVisiveis.Count == 0)
     {
         <div class="card state-card">
             <div class="empty-icon"><Icon Name="evolution" Size="28" /></div>
-            <h2>Nenhum lançamento encontrado em @_ano</h2>
-            <p>Não há registros de inventário gravados para o ano selecionado.</p>
+            <h2>@(_visaoAnual ? "Nenhum lançamento encontrado no histórico" : $"Nenhum lançamento encontrado em {_ano}")</h2>
+            <p>@(_visaoAnual ? "Não há registros de inventário gravados." : "Não há registros de inventário gravados para o ano selecionado.")</p>
             <a href="inventario" class="btn btn-primary">
                 <Icon Name="inventory" Size="16" /><span>Lançar inventário mensal</span>
             </a>
@@ -94,10 +104,14 @@ else
         <section class="card evolucao-chart-card" style="margin-bottom: 20px;">
             <div class="section-title">
                 <div>
-                    <h2>Gráfico de Evolução Patrimonial (@_ano)</h2>
-                    <p>Trajetória mensal de cada ativo e do patrimônio total consolidado</p>
+                    <h2>@(_visaoAnual ? "Gráfico de Evolução Patrimonial (Por Ano)" : $"Gráfico de Evolução Patrimonial ({_ano})")</h2>
+                    <p>@(_visaoAnual ? "Trajetória anual de cada ativo e do patrimônio total consolidado (base: inventário de dezembro ou último mês lançado no ano)" : "Trajetória mensal de cada ativo e do patrimônio total consolidado")</p>
                 </div>
                 <div class="legend-actions-bar">
+                    <div class="chart-toggle" style="margin-right: 6px;">
+                        <button type="button" class="@(!_visaoAnual ? "active" : "")" @onclick="() => AlterarVisaoAsync(false)">Por mês</button>
+                        <button type="button" class="@(_visaoAnual ? "active" : "")" @onclick="() => AlterarVisaoAsync(true)">Por ano</button>
+                    </div>
                     <button type="button" class="btn-legend-action @(_mostrarTotalNoGrafico && _ativosSelecionadosNoGrafico.Count == linhasFiltradas.Count ? "highlight" : "")"
                             @onclick="SelecionarTodos" title="Selecionar todos os ativos e o total">
                         <Icon Name="check" Size="12" /><span>Todos</span>
@@ -114,7 +128,7 @@ else
             </div>
 
             @{
-                var dadosGrafico = GerarDadosGrafico(linhasFiltradas, mesesVisiveis);
+                var dadosGrafico = GerarDadosGrafico(linhasFiltradas, periodosVisiveis);
             }
 
             @if (!_mostrarTotalNoGrafico && _ativosSelecionadosNoGrafico.Count == 0)
@@ -162,16 +176,16 @@ else
                             </g>
                         }
 
-                        <!-- Linhas verticais para cada mês -->
-                        @foreach (var pontoMes in dadosGrafico.MesesCoord)
+                        <!-- Linhas verticais para cada período -->
+                        @foreach (var pontoPeriodo in dadosGrafico.PeriodosCoord)
                         {
-                            <line x1="@pontoMes.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)" y1="@MargemTopo"
-                                  x2="@pontoMes.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)" y2="@(GraficoAltura - MargemBase)"
+                            <line x1="@pontoPeriodo.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)" y1="@MargemTopo"
+                                  x2="@pontoPeriodo.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)" y2="@(GraficoAltura - MargemBase)"
                                   stroke="var(--line)" stroke-width="0.75" />
                             <g>
-                                <text x="@pontoMes.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)" y="@(GraficoAltura - 8)"
+                                <text x="@pontoPeriodo.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)" y="@(GraficoAltura - 8)"
                                       text-anchor="middle" font-size="10" font-weight="600" fill="var(--muted)" font-family="sans-serif">
-                                    @pontoMes.Rotulo
+                                    @pontoPeriodo.Rotulo
                                 </text>
                             </g>
                         }
@@ -209,12 +223,12 @@ else
                                         r="16"
                                         fill="transparent"
                                         style="cursor: pointer;"
-                                        @onpointerenter="() => MostrarTooltip(p.X, p.Y, p.RotuloMes, serie.Nome, serie.Cor, p.Valor, p.VariacaoPct, p.ParticipacaoPct)"
+                                        @onpointerenter="() => MostrarTooltip(p.X, p.Y, p.RotuloPeriodo, serie.Nome, serie.Cor, p.Valor, p.VariacaoPct, p.ParticipacaoPct)"
                                         @onpointerleave="EsconderTooltip" />
                             }
                         }
 
-                        <!-- Linha do Total do Mês (se selecionado) -->
+                        <!-- Linha do Total (se selecionado) -->
                         @if (_mostrarTotalNoGrafico && !string.IsNullOrEmpty(dadosGrafico.SvgPathTotal))
                         {
                             <path d="@dadosGrafico.SvgPathTotal"
@@ -295,7 +309,7 @@ else
                                       stroke-width="1.5"
                                       filter="drop-shadow(0 6px 16px rgba(0,0,0,0.75))" />
 
-                                <!-- Cabeçalho: Mês / Ano -->
+                                <!-- Cabeçalho: Período -->
                                 <text x="@((boxX + 12).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))"
                                       y="@((boxY + 18).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))"
                                       fill="#9ca3af"
@@ -343,7 +357,8 @@ else
                                     }
                                     @if (tt.ParticipacaoPct.HasValue && tt.ParticipacaoPct.Value > 0)
                                     {
-                                        <tspan fill="#94a3b8" dx="6">@($"({tt.ParticipacaoPct.Value:N1}% do mês)")</tspan>
+                                        var sufixoPart = _visaoAnual ? "do ano" : "do mês";
+                                        <tspan fill="#94a3b8" dx="6">@($"({tt.ParticipacaoPct.Value:N1}% {sufixoPart})")</tspan>
                                     }
                                 </text>
                             </g>
@@ -358,7 +373,7 @@ else
                             @onclick="ToggleTotalNoGrafico"
                             title="@(_mostrarTotalNoGrafico ? "Clique para ocultar o Total e expandir a escala dos outros ativos" : "Clique para incluir o Total no gráfico")">
                         <span class="legend-color-dot" style="background: var(--primary);"></span>
-                        <strong>Total do Mês</strong>
+                        <strong>@(_visaoAnual ? "Total do Ano" : "Total do Mês")</strong>
                         @if (_mostrarTotalNoGrafico)
                         {
                             <span style="font-size: 10px; margin-left: 2px;">✓</span>
@@ -387,14 +402,17 @@ else
         </section>
 
         <div class="evolucao-legenda">
-            <span><strong>Legenda de cada mês:</strong></span>
+            <span><strong>@(_visaoAnual ? "Legenda de cada ano:" : "Legenda de cada mês:")</strong></span>
             <span class="legenda-item"><strong>Valor (R$)</strong> no topo</span>
-            <span class="legenda-item"><span class="badge badge-positive" style="font-size: 8px;">▲ / ▼ % Mês ant.</span> Variação em relação ao mês anterior</span>
-            <span class="legenda-item"><span class="badge badge-neutral" style="font-size: 8px;">% do Mês</span> Participação do ativo no patrimônio total do mês</span>
-            <label style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: var(--muted);">
-                <input type="checkbox" @bind="_mostrarTodosOs12Meses" />
-                <span>Exibir todos os 12 meses</span>
-            </label>
+            <span class="legenda-item"><span class="badge badge-positive" style="font-size: 8px;">@(_visaoAnual ? "▲ / ▼ % Ano ant." : "▲ / ▼ % Mês ant.")</span> @(_visaoAnual ? "Variação em relação ao ano anterior" : "Variação em relação ao mês anterior")</span>
+            <span class="legenda-item"><span class="badge badge-neutral" style="font-size: 8px;">@(_visaoAnual ? "% do Ano" : "% do Mês")</span> @(_visaoAnual ? "Participação do ativo no patrimônio do ano" : "Participação do ativo no patrimônio total do mês")</span>
+            @if (!_visaoAnual)
+            {
+                <label style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: var(--muted);">
+                    <input type="checkbox" @bind="_mostrarTodosOs12Meses" />
+                    <span>Exibir todos os 12 meses</span>
+                </label>
+            }
         </div>
 
         <div class="table-shell evolucao-matrix-shell">
@@ -404,11 +422,11 @@ else
                         <th class="sticky-col alinhar-esquerda" style="cursor:pointer;" @onclick="() => OrdenarPor(0)">
                             Ativo @IndicadorOrdenacao(0)
                         </th>
-                        @foreach (var mes in mesesVisiveis)
+                        @foreach (var p in periodosVisiveis)
                         {
-                            var m = mes;
-                            <th class="alinhar-direita col-mes-evolucao" style="cursor:pointer;" @onclick="() => OrdenarPor(m)">
-                                @($"{NomeMesCurto(m)}/{_ano % 100:00}") @IndicadorOrdenacao(m)
+                            var chavePeriodo = p;
+                            <th class="alinhar-direita col-mes-evolucao" style="cursor:pointer;" @onclick="() => OrdenarPor(chavePeriodo)">
+                                @ObterRotuloPeriodo(chavePeriodo) @IndicadorOrdenacao(chavePeriodo)
                             </th>
                         }
                     </tr>
@@ -427,9 +445,9 @@ else
                                 </div>
                                 <div class="ativo-sub-info">@linha.Ativo.TipoAtivo</div>
                             </td>
-                            @foreach (var mes in mesesVisiveis)
+                            @foreach (var p in periodosVisiveis)
                             {
-                                var celula = linha.Meses[mes];
+                                var celula = linha.Periodos.TryGetValue(p, out var c) ? c : CelulaEvolucaoMes.Vazia;
                                 <td class="alinhar-direita cell-mes-evolucao">
                                     @if (!celula.TemRegistro)
                                     {
@@ -439,20 +457,21 @@ else
                                     {
                                         <div class="evolucao-valor">@FormatarMoeda(celula.Valor)</div>
                                         <div class="evolucao-sub">
-                                            @if (celula.VariacaoMesAnteriorPct is decimal varPct)
+                                            @if (celula.VariacaoAnteriorPct is decimal varPct)
                                             {
                                                 var classeVar = varPct > 0 ? "var-pos" : (varPct < 0 ? "var-neg" : "var-neutro");
                                                 var seta = varPct > 0 ? "▲" : (varPct < 0 ? "▼" : "•");
-                                                <span class="evolucao-var @classeVar" title="Variação em relação ao mês anterior (@FormatarMoeda(celula.ValorMesAnterior ?? 0m))">
+                                                var labelAnt = _visaoAnual ? "ano anterior" : "mês anterior";
+                                                <span class="evolucao-var @classeVar" title="Variação em relação ao @labelAnt (@FormatarMoeda(celula.ValorAnterior ?? 0m))">
                                                     @seta @(varPct >= 0 ? "+" : "")@varPct.ToString("N2")%
                                                 </span>
                                             }
                                             else
                                             {
-                                                <span class="evolucao-var var-neutro" title="Sem base no mês imediatamente anterior">–</span>
+                                                <span class="evolucao-var var-neutro" title="Sem base no período imediatamente anterior">–</span>
                                             }
-                                            <span class="evolucao-part" title="Participação no total do mês">
-                                                @celula.ParticipacaoNoMesPct.ToString("N1")% do mês
+                                            <span class="evolucao-part" title="Participação no total do período">
+                                                @celula.ParticipacaoPct.ToString("N1")% @(_visaoAnual ? "do ano" : "do mês")
                                             </span>
                                         </div>
                                     }
@@ -463,29 +482,29 @@ else
                 </tbody>
                 <tfoot>
                     <tr>
-                        <td class="sticky-col alinhar-esquerda">Total do Mês</td>
-                        @foreach (var mes in mesesVisiveis)
+                        <td class="sticky-col alinhar-esquerda">@(_visaoAnual ? "Total do Ano" : "Total do Mês")</td>
+                        @foreach (var p in periodosVisiveis)
                         {
-                            var totalMes = ObterTotalMesFiltrado(linhasFiltradas, mes);
-                            var totalMesAnterior = ObterTotalMesAnteriorFiltrado(linhasFiltradas, mes);
-                            decimal? varTotalPct = totalMesAnterior > 0m
-                                ? Math.Round(((totalMes - totalMesAnterior) / totalMesAnterior) * 100m, 2, MidpointRounding.AwayFromZero)
+                            var totalPeriodo = ObterTotalPeriodoFiltrado(linhasFiltradas, p);
+                            var totalPeriodoAnterior = ObterTotalPeriodoAnteriorFiltrado(linhasFiltradas, periodosVisiveis, p);
+                            decimal? varTotalPct = totalPeriodoAnterior > 0m
+                                ? Math.Round(((totalPeriodo - totalPeriodoAnterior) / totalPeriodoAnterior) * 100m, 2, MidpointRounding.AwayFromZero)
                                 : null;
 
                             <td class="alinhar-direita cell-mes-evolucao">
-                                @if (totalMes <= 0m)
+                                @if (totalPeriodo <= 0m)
                                 {
                                     <span class="evolucao-vazio">–</span>
                                 }
                                 else
                                 {
-                                    <div class="evolucao-valor positive">@FormatarMoeda(totalMes)</div>
+                                    <div class="evolucao-valor positive">@FormatarMoeda(totalPeriodo)</div>
                                     <div class="evolucao-sub">
                                         @if (varTotalPct is decimal vt)
                                         {
                                             var classeVt = vt > 0 ? "var-pos" : (vt < 0 ? "var-neg" : "var-neutro");
                                             var setaVt = vt > 0 ? "▲" : (vt < 0 ? "▼" : "•");
-                                            <span class="evolucao-var @classeVt" title="Variação do patrimônio total em relação ao mês anterior">
+                                            <span class="evolucao-var @classeVt" title="Variação do patrimônio total em relação ao período anterior">
                                                 @setaVt @(vt >= 0 ? "+" : "")@vt.ToString("N2")%
                                             </span>
                                         }
@@ -512,6 +531,7 @@ else
 @code {
     private const int TamanhoPagina = 10;
 
+    private bool _visaoAnual;
     private int _ano = DateTime.Today.Year;
     private string _filtroTipo = string.Empty;
     private bool _mostrarTodosOs12Meses;
@@ -520,7 +540,7 @@ else
     private bool _mostrarTotalNoGrafico = true;
     private HashSet<Guid> _ativosSelecionadosNoGrafico = new();
 
-    private int _colunaOrdenacao = 0; // 0 = Ativo, 1..12 = Mês
+    private int _colunaOrdenacao = 0; // 0 = Ativo, > 0 = Mês (1..12) ou Ano (ex.: 2024..2026)
     private bool _ordenacaoAscendente = true;
     private int _paginaAtual = 1;
 
@@ -551,11 +571,23 @@ else
     ];
 
     private List<LinhaEvolucaoAtivo>? _linhas;
-    private readonly Dictionary<int, decimal> _totaisPorMes = new();
-    private decimal _totalDezembroAnoAnterior;
+    private readonly Dictionary<int, decimal> _totaisPorPeriodo = new();
+    private readonly Dictionary<int, int> _mesReferenciaPorAno = new();
+    private List<int> _anosDisponiveis = [];
 
     protected override async Task OnInitializedAsync()
     {
+        await CarregarAsync();
+    }
+
+    private async Task AlterarVisaoAsync(bool visaoAnual)
+    {
+        if (_visaoAnual == visaoAnual) return;
+        _visaoAnual = visaoAnual;
+        _colunaOrdenacao = 0;
+        _ordenacaoAscendente = true;
+        _paginaAtual = 1;
+        _tooltip = null;
         await CarregarAsync();
     }
 
@@ -581,12 +613,12 @@ else
 
     private IEnumerable<LinhaEvolucaoAtivo> ObterLinhasOrdenadas(List<LinhaEvolucaoAtivo> linhas)
     {
-        if (_colunaOrdenacao is >= 1 and <= 12)
+        if (_colunaOrdenacao > 0)
         {
-            var mes = _colunaOrdenacao;
+            var p = _colunaOrdenacao;
             return _ordenacaoAscendente
-                ? linhas.OrderBy(l => l.Meses[mes].Valor).ThenBy(l => l.Ativo.Nome)
-                : linhas.OrderByDescending(l => l.Meses[mes].Valor).ThenBy(l => l.Ativo.Nome);
+                ? linhas.OrderBy(l => l.Periodos.TryGetValue(p, out var c) ? c.Valor : 0m).ThenBy(l => l.Ativo.Nome)
+                : linhas.OrderByDescending(l => l.Periodos.TryGetValue(p, out var c) ? c.Valor : 0m).ThenBy(l => l.Ativo.Nome);
         }
 
         return _ordenacaoAscendente
@@ -601,111 +633,14 @@ else
         _paginaAtual = 1;
         try
         {
-            var ativosTask = CarregarTodosAtivosAsync();
-            var invAnoTask = CarregarTodoInventarioDoAnoAsync(_ano);
-            var invDezAnteriorTask = ApiClient.ListarInventarioAsync(ano: _ano - 1, mes: 12, page: 1, pageSize: 5000);
-
-            await Task.WhenAll(ativosTask, invAnoTask, invDezAnteriorTask);
-
-            var ativos = ativosTask.Result;
-            var lancamentosAno = invAnoTask.Result;
-            var lancamentosDezAnterior = invDezAnteriorTask.Result.Itens;
-
-            _totaisPorMes.Clear();
-            for (int m = 1; m <= 12; m++)
+            if (_visaoAnual)
             {
-                _totaisPorMes[m] = Math.Round(
-                    lancamentosAno.Where(x => x.Data.Month == m).Sum(x => x.Valor),
-                    2,
-                    MidpointRounding.AwayFromZero);
+                await CarregarVisaoAnualAsync();
             }
-
-            _totalDezembroAnoAnterior = Math.Round(
-                lancamentosDezAnterior.Sum(x => x.Valor),
-                2,
-                MidpointRounding.AwayFromZero);
-
-            var dezAnteriorPorAtivo = lancamentosDezAnterior
-                .GroupBy(x => x.AtivoId)
-                .ToDictionary(g => g.Key, g => Math.Round(g.First().Valor, 2, MidpointRounding.AwayFromZero));
-
-            var lancamentosPorAtivoEMes = lancamentosAno
-                .GroupBy(x => (x.AtivoId, x.Data.Month))
-                .ToDictionary(g => g.Key, g => Math.Round(g.First().Valor, 2, MidpointRounding.AwayFromZero));
-
-            var resultado = new List<LinhaEvolucaoAtivo>();
-
-            foreach (var ativo in ativos.OrderBy(a => a.Nome))
+            else
             {
-                var temAlgumValorNoAno = false;
-                for (int m = 1; m <= 12; m++)
-                {
-                    if (lancamentosPorAtivoEMes.ContainsKey((ativo.Id, m)))
-                    {
-                        temAlgumValorNoAno = true;
-                        break;
-                    }
-                }
-
-                // Ativos inativos só aparecem se tiverem histórico no ano selecionado
-                if (!ativo.StatusAtivo && !temAlgumValorNoAno)
-                {
-                    continue;
-                }
-
-                // Se mesmo ativo ativo não teve nenhum registro no ano, exibe apenas se tiver registro
-                if (!temAlgumValorNoAno)
-                {
-                    continue;
-                }
-
-                var mesesDict = new Dictionary<int, CelulaEvolucaoMes>();
-                dezAnteriorPorAtivo.TryGetValue(ativo.Id, out var valorDezAnterior);
-                var temDezAnterior = dezAnteriorPorAtivo.ContainsKey(ativo.Id);
-
-                for (int m = 1; m <= 12; m++)
-                {
-                    var temNoMes = lancamentosPorAtivoEMes.TryGetValue((ativo.Id, m), out var valorMes);
-                    decimal? valorAnterior = null;
-
-                    if (m == 1)
-                    {
-                        if (temDezAnterior && valorDezAnterior > 0m)
-                        {
-                            valorAnterior = valorDezAnterior;
-                        }
-                    }
-                    else if (lancamentosPorAtivoEMes.TryGetValue((ativo.Id, m - 1), out var valMesAnt) && valMesAnt > 0m)
-                    {
-                        valorAnterior = valMesAnt;
-                    }
-
-                    decimal? variacaoPct = null;
-                    if (temNoMes && valorAnterior is decimal vAnt && vAnt > 0m)
-                    {
-                        variacaoPct = Math.Round(((valorMes - vAnt) / vAnt) * 100m, 2, MidpointRounding.AwayFromZero);
-                    }
-
-                    var totalMes = _totaisPorMes[m];
-                    var participacaoPct = (temNoMes && totalMes > 0m)
-                        ? Math.Round((valorMes / totalMes) * 100m, 2, MidpointRounding.AwayFromZero)
-                        : 0m;
-
-                    mesesDict[m] = new CelulaEvolucaoMes(
-                        TemRegistro: temNoMes,
-                        Valor: temNoMes ? valorMes : 0m,
-                        ValorMesAnterior: valorAnterior,
-                        VariacaoMesAnteriorPct: variacaoPct,
-                        ParticipacaoNoMesPct: participacaoPct);
-                }
-
-                resultado.Add(new LinhaEvolucaoAtivo(ativo, mesesDict, temDezAnterior ? valorDezAnterior : null));
+                await CarregarVisaoMensalAsync();
             }
-
-            _linhas = resultado;
-            _mostrarTotalNoGrafico = true;
-            _ativosSelecionadosNoGrafico = resultado.Select(r => r.Ativo.Id).ToHashSet();
-            _tooltip = null;
         }
         catch (ApiException ex) when (ex.EhNaoAutorizado)
         {
@@ -719,6 +654,203 @@ else
         {
             _carregando = false;
         }
+    }
+
+    private async Task CarregarVisaoMensalAsync()
+    {
+        var ativosTask = CarregarTodosAtivosAsync();
+        var invAnoTask = CarregarTodoInventarioAsync(ano: _ano);
+        var invDezAnteriorTask = ApiClient.ListarInventarioAsync(ano: _ano - 1, mes: 12, page: 1, pageSize: 5000);
+
+        await Task.WhenAll(ativosTask, invAnoTask, invDezAnteriorTask);
+
+        var ativos = ativosTask.Result;
+        var lancamentosAno = invAnoTask.Result;
+        var lancamentosDezAnterior = invDezAnteriorTask.Result.Itens;
+
+        _totaisPorPeriodo.Clear();
+        _mesReferenciaPorAno.Clear();
+        _anosDisponiveis.Clear();
+
+        for (int m = 1; m <= 12; m++)
+        {
+            _totaisPorPeriodo[m] = Math.Round(
+                lancamentosAno.Where(x => x.Data.Month == m).Sum(x => x.Valor),
+                2,
+                MidpointRounding.AwayFromZero);
+        }
+
+        var dezAnteriorPorAtivo = lancamentosDezAnterior
+            .GroupBy(x => x.AtivoId)
+            .ToDictionary(g => g.Key, g => Math.Round(g.First().Valor, 2, MidpointRounding.AwayFromZero));
+
+        var lancamentosPorAtivoEMes = lancamentosAno
+            .GroupBy(x => (x.AtivoId, x.Data.Month))
+            .ToDictionary(g => g.Key, g => Math.Round(g.First().Valor, 2, MidpointRounding.AwayFromZero));
+
+        var resultado = new List<LinhaEvolucaoAtivo>();
+
+        foreach (var ativo in ativos.OrderBy(a => a.Nome))
+        {
+            var temAlgumValorNoAno = false;
+            for (int m = 1; m <= 12; m++)
+            {
+                if (lancamentosPorAtivoEMes.ContainsKey((ativo.Id, m)))
+                {
+                    temAlgumValorNoAno = true;
+                    break;
+                }
+            }
+
+            if (!temAlgumValorNoAno)
+            {
+                continue;
+            }
+
+            var mesesDict = new Dictionary<int, CelulaEvolucaoMes>();
+            dezAnteriorPorAtivo.TryGetValue(ativo.Id, out var valorDezAnterior);
+            var temDezAnterior = dezAnteriorPorAtivo.ContainsKey(ativo.Id);
+
+            for (int m = 1; m <= 12; m++)
+            {
+                var temNoMes = lancamentosPorAtivoEMes.TryGetValue((ativo.Id, m), out var valorMes);
+                decimal? valorAnterior = null;
+
+                if (m == 1)
+                {
+                    if (temDezAnterior && valorDezAnterior > 0m)
+                    {
+                        valorAnterior = valorDezAnterior;
+                    }
+                }
+                else if (lancamentosPorAtivoEMes.TryGetValue((ativo.Id, m - 1), out var valMesAnt) && valMesAnt > 0m)
+                {
+                    valorAnterior = valMesAnt;
+                }
+
+                decimal? variacaoPct = null;
+                if (temNoMes && valorAnterior is decimal vAnt && vAnt > 0m)
+                {
+                    variacaoPct = Math.Round(((valorMes - vAnt) / vAnt) * 100m, 2, MidpointRounding.AwayFromZero);
+                }
+
+                var totalMes = _totaisPorPeriodo[m];
+                var participacaoPct = (temNoMes && totalMes > 0m)
+                    ? Math.Round((valorMes / totalMes) * 100m, 2, MidpointRounding.AwayFromZero)
+                    : 0m;
+
+                mesesDict[m] = new CelulaEvolucaoMes(
+                    TemRegistro: temNoMes,
+                    Valor: temNoMes ? valorMes : 0m,
+                    ValorAnterior: valorAnterior,
+                    VariacaoAnteriorPct: variacaoPct,
+                    ParticipacaoPct: participacaoPct);
+            }
+
+            resultado.Add(new LinhaEvolucaoAtivo(ativo, mesesDict, temDezAnterior ? valorDezAnterior : null));
+        }
+
+        _linhas = resultado;
+        _mostrarTotalNoGrafico = true;
+        _ativosSelecionadosNoGrafico = resultado.Select(r => r.Ativo.Id).ToHashSet();
+        _tooltip = null;
+    }
+
+    private async Task CarregarVisaoAnualAsync()
+    {
+        var ativosTask = CarregarTodosAtivosAsync();
+        var invTodosTask = CarregarTodoInventarioAsync(ano: null);
+
+        await Task.WhenAll(ativosTask, invTodosTask);
+
+        var ativos = ativosTask.Result;
+        var todosLancamentos = invTodosTask.Result;
+
+        _totaisPorPeriodo.Clear();
+        _mesReferenciaPorAno.Clear();
+
+        _anosDisponiveis = todosLancamentos
+            .Select(x => x.Data.Year)
+            .Distinct()
+            .OrderBy(a => a)
+            .ToList();
+
+        // Para cada ano, prioriza o inventário de dezembro (mês 12).
+        // Se o ano ainda não possui lançamento em dezembro (ex.: ano em andamento), usa o último mês com lançamento naquele ano.
+        var lancamentosFechamentoPorAnoEAtivo = new Dictionary<(int Ano, Guid AtivoId), decimal>();
+
+        foreach (var ano in _anosDisponiveis)
+        {
+            var doAno = todosLancamentos.Where(x => x.Data.Year == ano).ToList();
+            var temDezembro = doAno.Any(x => x.Data.Month == 12 && x.Valor > 0m);
+            var mesRef = temDezembro
+                ? 12
+                : doAno.Where(x => x.Valor > 0m).Select(x => x.Data.Month).DefaultIfEmpty(12).Max();
+
+            _mesReferenciaPorAno[ano] = mesRef;
+
+            var doMesRef = doAno.Where(x => x.Data.Month == mesRef).ToList();
+            _totaisPorPeriodo[ano] = Math.Round(doMesRef.Sum(x => x.Valor), 2, MidpointRounding.AwayFromZero);
+
+            foreach (var grupo in doMesRef.GroupBy(x => x.AtivoId))
+            {
+                lancamentosFechamentoPorAnoEAtivo[(ano, grupo.Key)] = Math.Round(grupo.First().Valor, 2, MidpointRounding.AwayFromZero);
+            }
+        }
+
+        var resultado = new List<LinhaEvolucaoAtivo>();
+
+        foreach (var ativo in ativos.OrderBy(a => a.Nome))
+        {
+            var temAlgumValor = _anosDisponiveis.Any(a => lancamentosFechamentoPorAnoEAtivo.ContainsKey((a, ativo.Id)));
+            if (!temAlgumValor)
+            {
+                continue;
+            }
+
+            var anosDict = new Dictionary<int, CelulaEvolucaoMes>();
+
+            for (int i = 0; i < _anosDisponiveis.Count; i++)
+            {
+                var ano = _anosDisponiveis[i];
+                var temNoAno = lancamentosFechamentoPorAnoEAtivo.TryGetValue((ano, ativo.Id), out var valorAno);
+                decimal? valorAnterior = null;
+
+                if (i > 0)
+                {
+                    var anoAnt = _anosDisponiveis[i - 1];
+                    if (lancamentosFechamentoPorAnoEAtivo.TryGetValue((anoAnt, ativo.Id), out var valAnoAnt) && valAnoAnt > 0m)
+                    {
+                        valorAnterior = valAnoAnt;
+                    }
+                }
+
+                decimal? variacaoPct = null;
+                if (temNoAno && valorAnterior is decimal vAnt && vAnt > 0m)
+                {
+                    variacaoPct = Math.Round(((valorAno - vAnt) / vAnt) * 100m, 2, MidpointRounding.AwayFromZero);
+                }
+
+                var totalAno = _totaisPorPeriodo.TryGetValue(ano, out var tAno) ? tAno : 0m;
+                var participacaoPct = (temNoAno && totalAno > 0m)
+                    ? Math.Round((valorAno / totalAno) * 100m, 2, MidpointRounding.AwayFromZero)
+                    : 0m;
+
+                anosDict[ano] = new CelulaEvolucaoMes(
+                    TemRegistro: temNoAno,
+                    Valor: temNoAno ? valorAno : 0m,
+                    ValorAnterior: valorAnterior,
+                    VariacaoAnteriorPct: variacaoPct,
+                    ParticipacaoPct: participacaoPct);
+            }
+
+            resultado.Add(new LinhaEvolucaoAtivo(ativo, anosDict, null));
+        }
+
+        _linhas = resultado;
+        _mostrarTotalNoGrafico = true;
+        _ativosSelecionadosNoGrafico = resultado.Select(r => r.Ativo.Id).ToHashSet();
+        _tooltip = null;
     }
 
     private async Task<List<AtivoResponse>> CarregarTodosAtivosAsync()
@@ -736,7 +868,7 @@ else
         return todos;
     }
 
-    private async Task<List<InventarioResponse>> CarregarTodoInventarioDoAnoAsync(int ano)
+    private async Task<List<InventarioResponse>> CarregarTodoInventarioAsync(int? ano)
     {
         var todos = new List<InventarioResponse>();
         var pagina = 1;
@@ -761,43 +893,79 @@ else
         return _linhas.Where(l => l.Ativo.TipoAtivo == tipo).ToList();
     }
 
-    private List<int> ObterMesesVisiveis()
+    private List<int> ObterPeriodosVisiveis()
     {
+        if (_visaoAnual)
+        {
+            return _anosDisponiveis.Where(a => _totaisPorPeriodo.TryGetValue(a, out var total) && total > 0m).ToList();
+        }
+
         if (_mostrarTodosOs12Meses)
         {
             return Enumerable.Range(1, 12).ToList();
         }
 
         var mesesComDados = Enumerable.Range(1, 12)
-            .Where(m => _totaisPorMes.TryGetValue(m, out var total) && total > 0m)
+            .Where(m => _totaisPorPeriodo.TryGetValue(m, out var total) && total > 0m)
             .ToList();
 
         return mesesComDados.Count > 0 ? mesesComDados : Enumerable.Range(1, 12).ToList();
     }
 
-    private int ObterUltimoMesComDados()
+    private int ObterUltimoPeriodoComDados()
     {
+        if (_visaoAnual)
+        {
+            for (int i = _anosDisponiveis.Count - 1; i >= 0; i--)
+            {
+                var a = _anosDisponiveis[i];
+                if (_totaisPorPeriodo.TryGetValue(a, out var total) && total > 0m)
+                    return a;
+            }
+            return 0;
+        }
+
         for (int m = 12; m >= 1; m--)
         {
-            if (_totaisPorMes.TryGetValue(m, out var total) && total > 0m)
+            if (_totaisPorPeriodo.TryGetValue(m, out var total) && total > 0m)
                 return m;
         }
         return 0;
     }
 
-    private decimal ObterTotalMes(int mes) =>
-        _totaisPorMes.TryGetValue(mes, out var total) ? total : 0m;
+    private decimal ObterTotalPeriodo(int periodo) =>
+        _totaisPorPeriodo.TryGetValue(periodo, out var total) ? total : 0m;
 
-    private static decimal ObterTotalMesFiltrado(List<LinhaEvolucaoAtivo> linhas, int mes) =>
-        Math.Round(linhas.Where(l => l.Meses[mes].TemRegistro).Sum(l => l.Meses[mes].Valor), 2, MidpointRounding.AwayFromZero);
-
-    private static decimal ObterTotalMesAnteriorFiltrado(List<LinhaEvolucaoAtivo> linhas, int mes)
+    private string ObterRotuloPeriodo(int periodo)
     {
-        if (mes == 1)
+        if (_visaoAnual)
+        {
+            if (_mesReferenciaPorAno.TryGetValue(periodo, out var mesRef) && mesRef != 12)
+            {
+                return $"{periodo} ({NomeMesCurto(mesRef)})";
+            }
+            return $"{periodo}";
+        }
+        return $"{NomeMesCurto(periodo)}/{_ano % 100:00}";
+    }
+
+    private static decimal ObterTotalPeriodoFiltrado(List<LinhaEvolucaoAtivo> linhas, int periodo) =>
+        Math.Round(linhas.Where(l => l.Periodos.TryGetValue(periodo, out var c) && c.TemRegistro).Sum(l => l.Periodos[periodo].Valor), 2, MidpointRounding.AwayFromZero);
+
+    private decimal ObterTotalPeriodoAnteriorFiltrado(List<LinhaEvolucaoAtivo> linhas, List<int> periodosVisiveis, int periodo)
+    {
+        if (_visaoAnual)
+        {
+            var idx = _anosDisponiveis.IndexOf(periodo);
+            if (idx <= 0) return 0m;
+            return ObterTotalPeriodoFiltrado(linhas, _anosDisponiveis[idx - 1]);
+        }
+
+        if (periodo == 1)
         {
             return Math.Round(linhas.Where(l => l.ValorDezembroAnterior.HasValue).Sum(l => l.ValorDezembroAnterior!.Value), 2, MidpointRounding.AwayFromZero);
         }
-        return ObterTotalMesFiltrado(linhas, mes - 1);
+        return ObterTotalPeriodoFiltrado(linhas, periodo - 1);
     }
 
     private void ToggleTotalNoGrafico()
@@ -852,13 +1020,13 @@ else
         _tooltip = null;
     }
 
-    private void MostrarTooltip(double x, double y, string mes, string nome, string cor, decimal valor, decimal? varPct, decimal? partPct)
+    private void MostrarTooltip(double x, double y, string periodo, string nome, string cor, decimal valor, decimal? varPct, decimal? partPct)
     {
-        _tooltip = new TooltipDados(x, y, $"{mes} • {nome}", nome, cor, valor, varPct, partPct);
+        _tooltip = new TooltipDados(x, y, $"{periodo} • {nome}", nome, cor, valor, varPct, partPct);
     }
 
     private void MostrarTooltipTotal(PontoCoord p) =>
-        MostrarTooltip(p.X, p.Y, p.RotuloMes, "Total do Mês", "var(--primary)", p.Valor, p.VariacaoPct, 100m);
+        MostrarTooltip(p.X, p.Y, p.RotuloPeriodo, _visaoAnual ? "Total do Ano" : "Total do Mês", "var(--primary)", p.Valor, p.VariacaoPct, 100m);
 
     private void EsconderTooltip()
     {
@@ -874,65 +1042,65 @@ else
         return valor.ToString("C0", new System.Globalization.CultureInfo("pt-BR"));
     }
 
-    private sealed record PontoCoord(double X, double Y, decimal Valor, string RotuloMes, decimal? VariacaoPct, decimal? ParticipacaoPct);
-    private sealed record MesCoord(double X, string Rotulo);
+    private sealed record PontoCoord(double X, double Y, decimal Valor, string RotuloPeriodo, decimal? VariacaoPct, decimal? ParticipacaoPct);
+    private sealed record PeriodoCoord(double X, string Rotulo);
     private sealed record SerieGraficoAtivo(Guid AtivoId, string Nome, string Cor, List<PontoCoord> Pontos, string SvgPath);
     private sealed record ModeloGrafico(
         decimal MaxValor,
-        List<MesCoord> MesesCoord,
+        List<PeriodoCoord> PeriodosCoord,
         List<PontoCoord> PontosTotal,
         string SvgPathTotal,
         string SvgAreaTotal,
         List<SerieGraficoAtivo> SeriesAtivos);
 
-    private ModeloGrafico GerarDadosGrafico(List<LinhaEvolucaoAtivo> linhas, List<int> meses)
+    private ModeloGrafico GerarDadosGrafico(List<LinhaEvolucaoAtivo> linhas, List<int> periodos)
     {
-        if (meses.Count == 0)
+        if (periodos.Count == 0)
         {
             return new ModeloGrafico(0, [], [], string.Empty, string.Empty, []);
         }
 
         var linhasSelecionadas = linhas.Where(l => _ativosSelecionadosNoGrafico.Contains(l.Ativo.Id)).ToList();
 
-        // Calcula os totais mensais
-        var totais = meses.Select(m => ObterTotalMesFiltrado(linhas, m)).ToList();
+        var totais = periodos.Select(p => ObterTotalPeriodoFiltrado(linhas, p)).ToList();
         var maxTotal = (_mostrarTotalNoGrafico && totais.Count > 0) ? totais.Max() : 0m;
-        var maxAtivos = linhasSelecionadas.SelectMany(l => meses.Select(m => l.Meses[m].Valor)).DefaultIfEmpty(0m).Max();
+        var maxAtivos = linhasSelecionadas
+            .SelectMany(l => periodos.Select(p => l.Periodos.TryGetValue(p, out var c) ? c.Valor : 0m))
+            .DefaultIfEmpty(0m)
+            .Max();
         var maximo = Math.Max(maxTotal, maxAtivos);
 
         if (maximo <= 0m) maximo = 100m;
-        // Margem de 10% no topo para o gráfico respirar
         maximo = Math.Round(maximo * 1.10m, 2, MidpointRounding.AwayFromZero);
 
         double spanX = GraficoLargura - MargemEsq - MargemDir;
         double spanY = GraficoAltura - MargemTopo - MargemBase;
 
-        var mesesCoord = new List<MesCoord>();
-        for (int i = 0; i < meses.Count; i++)
+        var periodosCoord = new List<PeriodoCoord>();
+        for (int i = 0; i < periodos.Count; i++)
         {
-            var m = meses[i];
-            double x = meses.Count == 1
+            var p = periodos[i];
+            double x = periodos.Count == 1
                 ? MargemEsq + (spanX / 2.0)
-                : MargemEsq + (i * spanX / (meses.Count - 1));
-            mesesCoord.Add(new MesCoord(x, $"{NomeMesCurto(m)}/{_ano % 100:00}"));
+                : MargemEsq + (i * spanX / (periodos.Count - 1));
+            periodosCoord.Add(new PeriodoCoord(x, ObterRotuloPeriodo(p)));
         }
 
-        // Pontos do Total Geral (se selecionado)
         var pontosTotal = new List<PontoCoord>();
         if (_mostrarTotalNoGrafico)
         {
-            for (int i = 0; i < meses.Count; i++)
+            for (int i = 0; i < periodos.Count; i++)
             {
                 var val = totais[i];
-                var m = meses[i];
-                var totalAnt = ObterTotalMesAnteriorFiltrado(linhas, m);
+                var p = periodos[i];
+                var totalAnt = ObterTotalPeriodoAnteriorFiltrado(linhas, periodos, p);
                 decimal? varPct = totalAnt > 0m
                     ? Math.Round(((val - totalAnt) / totalAnt) * 100m, 2, MidpointRounding.AwayFromZero)
                     : null;
 
-                var x = mesesCoord[i].X;
+                var x = periodosCoord[i].X;
                 double y = MargemTopo + (double)(1m - (val / maximo)) * spanY;
-                pontosTotal.Add(new PontoCoord(x, y, val, mesesCoord[i].Rotulo, varPct, 100m));
+                pontosTotal.Add(new PontoCoord(x, y, val, periodosCoord[i].Rotulo, varPct, 100m));
             }
         }
 
@@ -946,7 +1114,6 @@ else
             svgAreaTotal = $"{svgPathTotal} L {ultimo.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)},{yZero.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} L {primeiro.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)},{yZero.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} Z";
         }
 
-        // Séries de cada ativo selecionado
         var seriesAtivos = new List<SerieGraficoAtivo>();
         for (int idx = 0; idx < linhas.Count; idx++)
         {
@@ -959,21 +1126,21 @@ else
             var cor = PaletaCores[idx % PaletaCores.Length];
             var pontos = new List<PontoCoord>();
 
-            for (int i = 0; i < meses.Count; i++)
+            for (int i = 0; i < periodos.Count; i++)
             {
-                var m = meses[i];
-                var celula = linha.Meses[m];
+                var p = periodos[i];
+                var celula = linha.Periodos.TryGetValue(p, out var c) ? c : CelulaEvolucaoMes.Vazia;
                 var val = celula.TemRegistro ? celula.Valor : 0m;
-                var x = mesesCoord[i].X;
+                var x = periodosCoord[i].X;
                 double y = MargemTopo + (double)(1m - (val / maximo)) * spanY;
-                pontos.Add(new PontoCoord(x, y, val, mesesCoord[i].Rotulo, celula.VariacaoMesAnteriorPct, celula.ParticipacaoNoMesPct));
+                pontos.Add(new PontoCoord(x, y, val, periodosCoord[i].Rotulo, celula.VariacaoAnteriorPct, celula.ParticipacaoPct));
             }
 
             var path = GerarSvgPathLinha(pontos);
             seriesAtivos.Add(new SerieGraficoAtivo(linha.Ativo.Id, linha.Ativo.Nome, cor, pontos, path));
         }
 
-        return new ModeloGrafico(maximo, mesesCoord, pontosTotal, svgPathTotal, svgAreaTotal, seriesAtivos);
+        return new ModeloGrafico(maximo, periodosCoord, pontosTotal, svgPathTotal, svgAreaTotal, seriesAtivos);
     }
 
     private static string GerarSvgPathLinha(List<PontoCoord> pontos)
@@ -1003,12 +1170,15 @@ else
     private sealed record CelulaEvolucaoMes(
         bool TemRegistro,
         decimal Valor,
-        decimal? ValorMesAnterior,
-        decimal? VariacaoMesAnteriorPct,
-        decimal ParticipacaoNoMesPct);
+        decimal? ValorAnterior,
+        decimal? VariacaoAnteriorPct,
+        decimal ParticipacaoPct)
+    {
+        public static readonly CelulaEvolucaoMes Vazia = new(false, 0m, null, null, 0m);
+    }
 
     private sealed record LinhaEvolucaoAtivo(
         AtivoResponse Ativo,
-        Dictionary<int, CelulaEvolucaoMes> Meses,
+        Dictionary<int, CelulaEvolucaoMes> Periodos,
         decimal? ValorDezembroAnterior);
 }
