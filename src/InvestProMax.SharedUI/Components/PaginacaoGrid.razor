@@ -1,29 +1,70 @@
 @namespace InvestProMax.SharedUI.Components
 
-@if (TotalPaginas > 1)
+@if (MostrarSeletorTamanho || TotalPaginas > 1)
 {
-    <div class="pagination">
-        <button type="button" @onclick="() => IrParaPaginaAsync(PaginaAtual - 1)" disabled="@(PaginaAtual <= 1)" title="Página anterior">‹</button>
-        @foreach (var item in ObterItensPaginacao())
+    <div class="pagination-controls">
+        @if (MostrarSeletorTamanho && TamanhoPaginaChanged.HasDelegate)
         {
-            if (item <= 0)
-            {
-                <span class="pagination-ellipsis">…</span>
-            }
-            else
-            {
-                var numPagina = item;
-                <button type="button" class="@(numPagina == PaginaAtual ? "active" : "")" @onclick="() => IrParaPaginaAsync(numPagina)">@numPagina</button>
-            }
+            <label class="page-size-selector" title="Quantidade de registros por página">
+                <span>Exibir</span>
+                <select value="@TamanhoPagina" @onchange="OnTamanhoPaginaAlteradoAsync">
+                    @foreach (var op in OpcoesTamanho)
+                    {
+                        <option value="@op">@op</option>
+                    }
+                </select>
+            </label>
         }
-        <button type="button" @onclick="() => IrParaPaginaAsync(PaginaAtual + 1)" disabled="@(PaginaAtual >= TotalPaginas)" title="Próxima página">›</button>
+
+        @if (TotalPaginas > 1)
+        {
+            <div class="pagination">
+                <button type="button" @onclick="() => IrParaPaginaAsync(PaginaAtual - 1)" disabled="@(PaginaAtual <= 1)" title="Página anterior">‹</button>
+                @foreach (var item in ObterItensPaginacao())
+                {
+                    if (item <= 0)
+                    {
+                        <span class="pagination-ellipsis">…</span>
+                    }
+                    else
+                    {
+                        var numPagina = item;
+                        <button type="button" class="@(numPagina == PaginaAtual ? "active" : "")" @onclick="() => IrParaPaginaAsync(numPagina)">@numPagina</button>
+                    }
+                }
+                <button type="button" @onclick="() => IrParaPaginaAsync(PaginaAtual + 1)" disabled="@(PaginaAtual >= TotalPaginas)" title="Próxima página">›</button>
+            </div>
+        }
     </div>
 }
 
 @code {
+    private static readonly int[] OpcoesPadrao = [10, 15, 25, 50, 100];
+
     [Parameter] public int PaginaAtual { get; set; } = 1;
     [Parameter] public int TotalPaginas { get; set; } = 1;
     [Parameter] public EventCallback<int> OnPaginaMudou { get; set; }
+
+    [Parameter] public int TamanhoPagina { get; set; } = 15;
+    [Parameter] public EventCallback<int> TamanhoPaginaChanged { get; set; }
+    [Parameter] public bool MostrarSeletorTamanho { get; set; } = true;
+    [Parameter] public IReadOnlyList<int> OpcoesTamanho { get; set; } = OpcoesPadrao;
+
+    public static int CalcularTamanhoPadrao(int totalRegistrosNoBanco) =>
+        totalRegistrosNoBanco < 100 ? 15 : 25;
+
+    private async Task OnTamanhoPaginaAlteradoAsync(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var novoTamanho) || novoTamanho <= 0 || novoTamanho == TamanhoPagina)
+            return;
+
+        TamanhoPagina = novoTamanho;
+        await TamanhoPaginaChanged.InvokeAsync(novoTamanho);
+        if (PaginaAtual != 1)
+        {
+            await OnPaginaMudou.InvokeAsync(1);
+        }
+    }
 
     private async Task IrParaPaginaAsync(int novaPagina)
     {
@@ -78,4 +119,3 @@
         yield return TotalPaginas;
     }
 }
-

@@ -170,7 +170,7 @@ else
             <div class="table-footer">
                 <strong>Total recebido (página): @totalRecebido.ToString("C2")</strong>
                 <span>Mostrando @inicio–@fim de @totalRegistros proventos</span>
-                <PaginacaoGrid PaginaAtual="_paginaAtual" TotalPaginas="totalPaginas" OnPaginaMudou="MudarPagina" />
+                <PaginacaoGrid PaginaAtual="_paginaAtual" TotalPaginas="totalPaginas" @bind-TamanhoPagina="_tamanhoPagina" OnPaginaMudou="MudarPagina" />
             </div>
         </div>
     }
@@ -274,7 +274,8 @@ else
     private string _colunaOrdenacao = "Data";
     private bool _ordenacaoAscendente = false;
     private int _paginaAtual = 1;
-    private const int _tamanhoPagina = 10;
+    private int _tamanhoPagina = 15;
+    private bool _tamanhoDefinidoPeloUsuario;
 
     private Guid? _editandoId;
     private FormDividendo? _modelo;
@@ -427,6 +428,11 @@ else
             }
 
             _todosDividendos = todos;
+            if (!_tamanhoDefinidoPeloUsuario)
+            {
+                _tamanhoPagina = PaginacaoGrid.CalcularTamanhoPadrao(_todosDividendos.Count);
+                _tamanhoDefinidoPeloUsuario = true;
+            }
         }
         catch (ApiException ex) when (ex.EhNaoAutorizado)
         {

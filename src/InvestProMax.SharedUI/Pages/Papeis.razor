@@ -148,7 +148,7 @@ else
             </table>
             <div class="table-footer">
                 <span>Mostrando @inicio–@fim de @totalRegistros papéis cadastrados</span>
-                <PaginacaoGrid PaginaAtual="_paginaAtual" TotalPaginas="totalPaginas" OnPaginaMudou="p => _paginaAtual = p" />
+                <PaginacaoGrid PaginaAtual="_paginaAtual" TotalPaginas="totalPaginas" @bind-TamanhoPagina="_tamanhoPagina" OnPaginaMudou="p => _paginaAtual = p" />
             </div>
         </div>
     }
@@ -348,7 +348,8 @@ else
     private string _colunaOrdenacao = "Codigo";
     private bool _ordenacaoAscendente = true;
     private int _paginaAtual = 1;
-    private const int _tamanhoPagina = 10;
+    private int _tamanhoPagina = 15;
+    private bool _tamanhoDefinidoPeloUsuario;
 
     private string ObterTextoUltimaAtualizacao()
     {
@@ -490,6 +491,11 @@ else
                 pag++;
             }
             _todosPapeis = todos;
+            if (!_tamanhoDefinidoPeloUsuario)
+            {
+                _tamanhoPagina = PaginacaoGrid.CalcularTamanhoPadrao(_todosPapeis.Count);
+                _tamanhoDefinidoPeloUsuario = true;
+            }
 
             var resSegmentos = await ApiClient.ListarSegmentosAsync(page: 1, pageSize: 500);
             _segmentosDisponiveis = resSegmentos.Itens;

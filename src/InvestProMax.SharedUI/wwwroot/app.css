@@ -2842,3 +2842,97 @@ tfoot th {
     text-align: center;
   }
 }
+
+
+/* Page Size Selector & Compact Sticky First Column for All Grids */
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-size-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.page-size-selector select {
+  height: 28px !important;
+  min-width: 58px;
+  padding: 0 6px !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.table-footer {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.table-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-shell thead th:first-child,
+.table-shell tbody td:first-child,
+.table-shell tfoot td:first-child,
+.table-shell tfoot th:first-child,
+.evolucao-matrix-table .sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  width: 1%;
+  min-width: 72px;
+  max-width: 155px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-shell thead th:first-child,
+.evolucao-matrix-table thead .sticky-col {
+  background: var(--table-head);
+  z-index: 3;
+}
+
+.table-shell tfoot td:first-child,
+.table-shell tfoot th:first-child,
+.evolucao-matrix-table tfoot .sticky-col {
+  background: var(--table-foot);
+  z-index: 3;
+}
+
+.table-shell tbody tr:hover td:first-child,
+.evolucao-matrix-table tbody tr:hover .sticky-col {
+  background: var(--table-row-hover);
+}
+
+.table-compact .col-incluir {
+  min-width: 52px !important;
+  max-width: 64px !important;
+}
+
+@media (max-width: 780px) {
+  .table-shell thead th:first-child,
+  .table-shell tbody td:first-child,
+  .table-shell tfoot td:first-child,
+  .table-shell tfoot th:first-child,
+  .evolucao-matrix-table .sticky-col {
+    min-width: 68px;
+    max-width: 125px;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+}
