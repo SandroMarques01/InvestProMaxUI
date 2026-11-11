@@ -18,6 +18,7 @@ public interface ITransacaoRepository
     Task AtualizarAsync(Transacao transacao, CancellationToken ct = default);
     Task AtualizarEmLoteAsync(IEnumerable<Transacao> transacoes, CancellationToken ct = default);
     Task RemoverAsync(Transacao transacao, CancellationToken ct = default);
+    Task RemoverEmLoteAsync(IEnumerable<Transacao> transacoes, CancellationToken ct = default);
 
     /// <summary>Regra 5: hashes de linhas do extrato B3 já importadas para o usuário, usados
     /// para não duplicar lançamentos em reimportações do mesmo arquivo.</summary>

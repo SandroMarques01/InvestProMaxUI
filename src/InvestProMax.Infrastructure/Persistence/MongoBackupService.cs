@@ -203,5 +203,81 @@ public sealed class MongoBackupService : IMongoBackupService
                 TotalGeralRegistros: totalGeral);
         }
     }
+
+    public async Task RegistrarBackupEventoPapelAsync(
+        IReadOnlyList<BackupTransacaoEventoItem> transacoes,
+        IReadOnlyList<BackupDividendoEventoItem> dividendos,
+        CancellationToken ct = default)
+    {
+        if (_mongoClient is null)
+        {
+            _logger.LogWarning("MongoDB não configurado: backup de evento corporativo (IPM_BKP_Transacoes / IPM_BKP_Dividendos) ignorado.");
+            return;
+        }
+
+        try
+        {
+            var mongoDb = _mongoClient.GetDatabase(_databaseName);
+            var agoraUtc = DateTime.UtcNow;
+
+            if (transacoes.Count > 0)
+            {
+                var colTransacoes = mongoDb.GetCollection<BsonDocument>("IPM_BKP_Transacoes");
+                var docsTransacoes = transacoes.Select(t => new BsonDocument
+                {
+                    { "_id", Guid.NewGuid().ToString() },
+                    { "TransacaoId", t.TransacaoId.ToString() },
+                    { "PapelAnteriorId", t.PapelAnteriorId.ToString() },
+                    { "PapelAtualId", t.PapelAtualId.ToString() },
+                    { "CodigoAnterior", t.CodigoAnterior },
+                    { "CodigoAtual", t.CodigoAtual },
+                    { "DataAcao", t.DataAcao.ToString("yyyy-MM-dd") },
+                    { "DataHoraAcaoUtc", agoraUtc },
+                    { "TipoAcao", t.TipoAcao },
+                    { "FatorMultiplicador", t.FatorMultiplicador.HasValue ? (BsonValue)new BsonDecimal128(t.FatorMultiplicador.Value) : BsonNull.Value },
+                    { "DataTransacao", t.DataTransacao.ToString("yyyy-MM-dd") },
+                    { "TipoTransacao", t.TipoTransacao },
+                    { "QuantidadeAnterior", new BsonDecimal128(t.QuantidadeAnterior) },
+                    { "QuantidadeAtual", new BsonDecimal128(t.QuantidadeAtual) },
+                    { "ValorAnterior", new BsonDecimal128(t.ValorAnterior) },
+                    { "ValorAtual", new BsonDecimal128(t.ValorAtual) },
+                    { "Descricao", t.Descricao is not null ? (BsonValue)t.Descricao : BsonNull.Value }
+                }).ToList();
+
+                await colTransacoes.InsertManyAsync(docsTransacoes, cancellationToken: ct);
+            }
+
+            if (dividendos.Count > 0)
+            {
+                var colDividendos = mongoDb.GetCollection<BsonDocument>("IPM_BKP_Dividendos");
+                var docsDividendos = dividendos.Select(d => new BsonDocument
+                {
+                    { "_id", Guid.NewGuid().ToString() },
+                    { "DividendoId", d.DividendoId.ToString() },
+                    { "PapelAnteriorId", d.PapelAnteriorId.ToString() },
+                    { "PapelAtualId", d.PapelAtualId.ToString() },
+                    { "CodigoAnterior", d.CodigoAnterior },
+                    { "CodigoAtual", d.CodigoAtual },
+                    { "DataAcao", d.DataAcao.ToString("yyyy-MM-dd") },
+                    { "DataHoraAcaoUtc", agoraUtc },
+                    { "TipoAcao", d.TipoAcao },
+                    { "FatorMultiplicador", d.FatorMultiplicador.HasValue ? (BsonValue)new BsonDecimal128(d.FatorMultiplicador.Value) : BsonNull.Value },
+                    { "DataDividendo", d.DataDividendo.ToString("yyyy-MM-dd") },
+                    { "TipoDividendo", d.TipoDividendo },
+                    { "QuantidadeAnterior", new BsonDecimal128(d.QuantidadeAnterior) },
+                    { "QuantidadeAtual", new BsonDecimal128(d.QuantidadeAtual) },
+                    { "ValorAnterior", new BsonDecimal128(d.ValorAnterior) },
+                    { "ValorAtual", new BsonDecimal128(d.ValorAtual) },
+                    { "Descricao", d.Descricao is not null ? (BsonValue)d.Descricao : BsonNull.Value }
+                }).ToList();
+
+                await colDividendos.InsertManyAsync(docsDividendos, cancellationToken: ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro ao registrar backup de evento corporativo nas coleções IPM_BKP_Transacoes / IPM_BKP_Dividendos.");
+        }
+    }
 }
 

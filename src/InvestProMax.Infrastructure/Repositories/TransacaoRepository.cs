@@ -75,6 +75,12 @@ public class TransacaoRepository : ITransacaoRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task RemoverEmLoteAsync(IEnumerable<Transacao> transacoes, CancellationToken ct = default)
+    {
+        _db.Transacoes.RemoveRange(transacoes);
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task<HashSet<string>> ListarHashesImportadosAsync(Guid usuarioId, CancellationToken ct = default) =>
         (await _db.Transacoes
             .Where(t => t.Papel!.UsuarioId == usuarioId && t.OrigemImportacaoHash != null)

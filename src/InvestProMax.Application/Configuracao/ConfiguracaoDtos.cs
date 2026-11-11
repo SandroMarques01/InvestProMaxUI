@@ -41,3 +41,37 @@ public sealed record StatusMongoResponse(
     string Banco,
     IReadOnlyList<BackupMongoTabelaItem> Colecoes,
     int TotalDocumentos);
+
+public sealed record BackupTransacaoEventoItem(
+    Guid TransacaoId,
+    Guid PapelAnteriorId,
+    Guid PapelAtualId,
+    string CodigoAnterior,
+    string CodigoAtual,
+    DateOnly DataAcao,
+    string TipoAcao,
+    decimal? FatorMultiplicador,
+    DateOnly DataTransacao,
+    string TipoTransacao,
+    decimal QuantidadeAnterior,
+    decimal QuantidadeAtual,
+    decimal ValorAnterior,
+    decimal ValorAtual,
+    string? Descricao);
+
+public sealed record BackupDividendoEventoItem(
+    Guid DividendoId,
+    Guid PapelAnteriorId,
+    Guid PapelAtualId,
+    string CodigoAnterior,
+    string CodigoAtual,
+    DateOnly DataAcao,
+    string TipoAcao,
+    decimal? FatorMultiplicador,
+    DateOnly DataDividendo,
+    string TipoDividendo,
+    decimal QuantidadeAnterior,
+    decimal QuantidadeAtual,
+    decimal ValorAnterior,
+    decimal ValorAtual,
+    string? Descricao);

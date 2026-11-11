@@ -1,6 +1,7 @@
 using FluentAssertions;
 using InvestProMax.Application.Common.Exceptions;
 using InvestProMax.Application.Common.Interfaces;
+using InvestProMax.Application.Configuracao;
 using InvestProMax.Application.Dividendos;
 using InvestProMax.Application.Papeis;
 using InvestProMax.Application.Segmentos;
@@ -20,6 +21,7 @@ public class PapelServiceTests
     private readonly Mock<IDividendoRepository> _dividendoRepository = new();
     private readonly Mock<ISegmentoRepository> _segmentoRepository = new();
     private readonly Mock<IUsuarioLogado> _usuarioLogado = new();
+    private readonly Mock<IMongoBackupService> _mongoBackupService = new();
     private readonly Guid _usuarioId = Guid.NewGuid();
     private readonly PapelService _sut;
 
@@ -30,7 +32,7 @@ public class PapelServiceTests
             .ReturnsAsync(new List<MovimentoAluguel>());
         _sut = new PapelService(
             _papelRepository.Object, _transacaoRepository.Object, _movimentoAluguelRepository.Object, _dividendoRepository.Object,
-            _segmentoRepository.Object, _usuarioLogado.Object);
+            _segmentoRepository.Object, _usuarioLogado.Object, _mongoBackupService.Object);
     }
 
     private Papel NovoPapel(string codigo) => new() { UsuarioId = _usuarioId, Codigo = codigo, Nome = codigo, Ativo = true };
@@ -191,6 +193,74 @@ public class PapelServiceTests
 
         await segunda.Should().ThrowAsync<RegraDeNegocioException>();
         transacao.Quantidade.Should().Be(200); // não dobrou de novo
+    }
+
+    [Fact]
+    public async Task Grupamento_remove_transacao_artificial_da_B3_na_data_do_evento_e_registra_backup_no_Mongo()
+    {
+        var papel = NovoPapel("VIVT3");
+        var compraAntiga = new Transacao
+        {
+            PapelId = papel.Id,
+            TipoTransacao = TipoTransacao.Compra,
+            Quantidade = 20m,
+            ValorUnitario = 46m,
+            Data = new DateOnly(2024, 4, 9),
+            Descricao = "Importado da B3: Transferência - Liquidação"
+        };
+        var vendaArtificialGrupamento = new Transacao
+        {
+            PapelId = papel.Id,
+            TipoTransacao = TipoTransacao.Venda,
+            Quantidade = 0.50m,
+            ValorUnitario = 0m,
+            Data = new DateOnly(2025, 4, 16),
+            Descricao = "Importado da B3: Grupamento"
+        };
+        var vendaLeilaoFracao = new Transacao
+        {
+            PapelId = papel.Id,
+            TipoTransacao = TipoTransacao.Venda,
+            Quantidade = 0.50m,
+            ValorUnitario = 2131.34m,
+            Data = new DateOnly(2025, 5, 28),
+            Descricao = "Importado da B3: Leilão de Fração"
+        };
+
+        var listaTransacoes = new List<Transacao> { compraAntiga, vendaArtificialGrupamento, vendaLeilaoFracao };
+        papel.Transacoes = listaTransacoes;
+
+        _papelRepository.Setup(r => r.ObterPorIdAsync(papel.Id, _usuarioId, default)).ReturnsAsync(papel);
+        _transacaoRepository.Setup(r => r.ListarPorPapelAsync(papel.Id, default)).ReturnsAsync(listaTransacoes);
+        _transacaoRepository
+            .Setup(r => r.RemoverEmLoteAsync(It.IsAny<IEnumerable<Transacao>>(), default))
+            .Callback<IEnumerable<Transacao>, CancellationToken>((rem, _) =>
+            {
+                foreach (var item in rem.ToList())
+                {
+                    listaTransacoes.Remove(item);
+                }
+            })
+            .Returns(Task.CompletedTask);
+        _dividendoRepository.Setup(r => r.ListarPorPapelAsync(papel.Id, default)).ReturnsAsync(new List<Dividendo>());
+
+        // Grupamento 40:1 em 16/04/2025 (20 ações viram 0,50 ação; vendida 0,50 em 28/05/2025 -> saldo final 0)
+        var resultado = await _sut.DesdobrarAsync(
+            papel.Id,
+            new DesdobramentoRequest(40m, new DateOnly(2025, 4, 16), TipoEventoPapel.Grupamento));
+
+        compraAntiga.Quantidade.Should().Be(0.5m);
+        compraAntiga.ValorUnitario.Should().Be(1840m);
+        listaTransacoes.Should().NotContain(vendaArtificialGrupamento);
+        resultado.QuantidadeAtual.Should().Be(0m);
+        papel.Ativo.Should().BeFalse();
+
+        _mongoBackupService.Verify(m => m.RegistrarBackupEventoPapelAsync(
+            It.Is<IReadOnlyList<BackupTransacaoEventoItem>>(b =>
+                b.Count == 2 &&
+                b.Any(x => x.TransacaoId == compraAntiga.Id && x.QuantidadeAnterior == 20m && x.QuantidadeAtual == 0.5m && x.ValorAnterior == 46m && x.ValorAtual == 1840m && x.TipoAcao == "Grupamento")),
+            It.IsAny<IReadOnlyList<BackupDividendoEventoItem>>(),
+            default), Times.Once);
     }
 
     // ---------- Detalhe do papel (fórmulas do MinhasFinancas) ----------

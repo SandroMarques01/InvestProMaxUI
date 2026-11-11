@@ -1,6 +1,7 @@
 using InvestProMax.Application.Common;
 using InvestProMax.Application.Common.Exceptions;
 using InvestProMax.Application.Common.Interfaces;
+using InvestProMax.Application.Configuracao;
 using InvestProMax.Application.Dividendos;
 using InvestProMax.Application.Segmentos;
 using InvestProMax.Application.Transacoes;
@@ -30,6 +31,7 @@ public sealed class PapelService : IPapelService
     private readonly IDividendoRepository _dividendoRepository;
     private readonly ISegmentoRepository _segmentoRepository;
     private readonly IUsuarioLogado _usuarioLogado;
+    private readonly IMongoBackupService? _mongoBackupService;
 
     public PapelService(
         IPapelRepository papelRepository,
@@ -37,7 +39,8 @@ public sealed class PapelService : IPapelService
         IMovimentoAluguelRepository movimentoAluguelRepository,
         IDividendoRepository dividendoRepository,
         ISegmentoRepository segmentoRepository,
-        IUsuarioLogado usuarioLogado)
+        IUsuarioLogado usuarioLogado,
+        IMongoBackupService? mongoBackupService = null)
     {
         _papelRepository = papelRepository;
         _transacaoRepository = transacaoRepository;
@@ -45,6 +48,7 @@ public sealed class PapelService : IPapelService
         _dividendoRepository = dividendoRepository;
         _segmentoRepository = segmentoRepository;
         _usuarioLogado = usuarioLogado;
+        _mongoBackupService = mongoBackupService;
     }
 
     public async Task<PaginaResultado<PapelResponse>> ListarAsync(
@@ -117,6 +121,7 @@ public sealed class PapelService : IPapelService
     /// <summary>
     /// Regra 3: realoca todas as Transacao e Dividendo do papel de origem para o destino, e
     /// desativa a origem. Usado quando um ticker muda de código na B3.
+    /// Registra o histórico anterior nas coleções IPM_BKP_Transacoes e IPM_BKP_Dividendos no MongoDB.
     /// </summary>
     public async Task<PapelResponse> TrocarAsync(Guid origemId, TrocarPapelRequest request, CancellationToken ct = default)
     {
@@ -127,15 +132,57 @@ public sealed class PapelService : IPapelService
 
         var origem = await ObterOuFalharAsync(origemId, ct);
         var destino = await ObterOuFalharAsync(request.PapelDestinoId, ct);
+        var dataAcao = DateOnly.FromDateTime(DateTime.UtcNow);
+        const string tipoAcao = "TrocaDeCodigo";
 
         var transacoesOrigem = await _transacaoRepository.ListarPorPapelAsync(origem.Id, ct);
+        var dividendosOrigem = await _dividendoRepository.ListarPorPapelAsync(origem.Id, ct);
+
+        var backupTransacoes = transacoesOrigem.Select(t => new BackupTransacaoEventoItem(
+            TransacaoId: t.Id,
+            PapelAnteriorId: origem.Id,
+            PapelAtualId: destino.Id,
+            CodigoAnterior: origem.Codigo,
+            CodigoAtual: destino.Codigo,
+            DataAcao: dataAcao,
+            TipoAcao: tipoAcao,
+            FatorMultiplicador: null,
+            DataTransacao: t.Data,
+            TipoTransacao: t.TipoTransacao.ToString(),
+            QuantidadeAnterior: t.Quantidade,
+            QuantidadeAtual: t.Quantidade,
+            ValorAnterior: t.ValorUnitario,
+            ValorAtual: t.ValorUnitario,
+            Descricao: t.Descricao)).ToList();
+
+        var backupDividendos = dividendosOrigem.Select(d => new BackupDividendoEventoItem(
+            DividendoId: d.Id,
+            PapelAnteriorId: origem.Id,
+            PapelAtualId: destino.Id,
+            CodigoAnterior: origem.Codigo,
+            CodigoAtual: destino.Codigo,
+            DataAcao: dataAcao,
+            TipoAcao: tipoAcao,
+            FatorMultiplicador: null,
+            DataDividendo: d.Data,
+            TipoDividendo: d.TipoDividendo.ToString(),
+            QuantidadeAnterior: d.Quantidade,
+            QuantidadeAtual: d.Quantidade,
+            ValorAnterior: d.ValorRecebido,
+            ValorAtual: d.ValorRecebido,
+            Descricao: d.Descricao)).ToList();
+
+        if (_mongoBackupService is not null)
+        {
+            await _mongoBackupService.RegistrarBackupEventoPapelAsync(backupTransacoes, backupDividendos, ct);
+        }
+
         foreach (var transacao in transacoesOrigem)
         {
             transacao.PapelId = destino.Id;
         }
         await _transacaoRepository.AtualizarEmLoteAsync(transacoesOrigem, ct);
 
-        var dividendosOrigem = await _dividendoRepository.ListarPorPapelAsync(origem.Id, ct);
         foreach (var dividendo in dividendosOrigem)
         {
             dividendo.PapelId = destino.Id;
@@ -163,50 +210,152 @@ public sealed class PapelService : IPapelService
     /// <summary>
     /// Regra 4: recalcula quantidade/valor unitário das Transacao e Dividendo anteriores à
     /// data do evento, aplicando o fator, e marca os registros ajustados com Historico = true.
-    /// ASSUNÇÃO SINALIZADA (ver DesdobramentoRequest): os registros existentes são ajustados
-    /// em memória (não duplicados) — a especificação fala em "recalcula" os registros
-    /// anteriores, não em criar novos.
+    /// Salva o estado anterior nas coleções IPM_BKP_Transacoes e IPM_BKP_Dividendos no MongoDB
+    /// e remove transações artificiais de "Importado da B3: Grupamento" ou "Importado da B3: Desdobro"
+    /// na data do evento para evitar distorção da posição em carteira.
     /// </summary>
     public async Task<PapelResponse> DesdobrarAsync(Guid id, DesdobramentoRequest request, CancellationToken ct = default)
     {
         var papel = await ObterOuFalharAsync(id, ct);
 
         var multiplicadorQuantidade = request.Tipo == TipoEventoPapel.Desdobramento ? request.Fator : 1 / request.Fator;
-        var marcador = $"[{(request.Tipo == TipoEventoPapel.Desdobramento ? "Desdobramento" : "Grupamento")} {request.Data:dd/MM/yyyy}]";
+        var tipoAcao = request.Tipo == TipoEventoPapel.Desdobramento ? "Desdobramento" : "Grupamento";
+        var marcador = $"[{tipoAcao} {request.Data:dd/MM/yyyy}]";
 
-        var todasTransacoes = (await _transacaoRepository.ListarPorPapelAsync(papel.Id, ct))
-            .Where(t => t.Data < request.Data).ToList();
-        var todosDividendos = (await _dividendoRepository.ListarPorPapelAsync(papel.Id, ct))
-            .Where(d => d.Data < request.Data).ToList();
+        var transacoesDoPapel = await _transacaoRepository.ListarPorPapelAsync(papel.Id, ct);
+        var dividendosDoPapel = await _dividendoRepository.ListarPorPapelAsync(papel.Id, ct);
+
+        // Remove transações artificiais da B3 ("Importado da B3: Grupamento" / "Importado da B3: Desdobro") na data do evento
+        var transacoesArtificiaisEvento = transacoesDoPapel
+            .Where(t => t.Data == request.Data && EhTransacaoArtificialDeEventoB3(t.Descricao, request.Tipo))
+            .ToList();
+
+        var todasTransacoes = transacoesDoPapel
+            .Where(t => t.Data < request.Data)
+            .ToList();
+        var todosDividendos = dividendosDoPapel
+            .Where(d => d.Data < request.Data)
+            .ToList();
 
         // Idempotência: lançamentos já ajustados por este evento carregam o marcador e são pulados.
         var transacoes = todasTransacoes.Where(t => t.Descricao?.Contains(marcador) != true).ToList();
         var dividendos = todosDividendos.Where(d => d.Descricao?.Contains(marcador) != true).ToList();
-        if (transacoes.Count == 0 && dividendos.Count == 0 && (todasTransacoes.Count + todosDividendos.Count) > 0)
+        if (transacoes.Count == 0 && dividendos.Count == 0 && transacoesArtificiaisEvento.Count == 0
+            && (todasTransacoes.Count + todosDividendos.Count) > 0)
         {
             throw new RegraDeNegocioException($"Este evento já foi aplicado ao papel {papel.Codigo} {marcador}.");
         }
 
+        var backupTransacoes = new List<BackupTransacaoEventoItem>();
         foreach (var transacao in transacoes)
         {
-            transacao.Quantidade *= multiplicadorQuantidade;
-            transacao.ValorUnitario /= multiplicadorQuantidade;
+            var qtdAnterior = transacao.Quantidade;
+            var valorAnterior = transacao.ValorUnitario;
+            var qtdAtual = qtdAnterior * multiplicadorQuantidade;
+            var valorAtual = valorAnterior / multiplicadorQuantidade;
+
+            backupTransacoes.Add(new BackupTransacaoEventoItem(
+                TransacaoId: transacao.Id,
+                PapelAnteriorId: papel.Id,
+                PapelAtualId: papel.Id,
+                CodigoAnterior: papel.Codigo,
+                CodigoAtual: papel.Codigo,
+                DataAcao: request.Data,
+                TipoAcao: tipoAcao,
+                FatorMultiplicador: request.Fator,
+                DataTransacao: transacao.Data,
+                TipoTransacao: transacao.TipoTransacao.ToString(),
+                QuantidadeAnterior: qtdAnterior,
+                QuantidadeAtual: qtdAtual,
+                ValorAnterior: valorAnterior,
+                ValorAtual: valorAtual,
+                Descricao: transacao.Descricao));
+
+            transacao.Quantidade = qtdAtual;
+            transacao.ValorUnitario = valorAtual;
             transacao.Historico = true;
             transacao.Descricao = string.IsNullOrWhiteSpace(transacao.Descricao) ? marcador : $"{transacao.Descricao} {marcador}";
         }
-        await _transacaoRepository.AtualizarEmLoteAsync(transacoes, ct);
 
-        // Dividendo: só a Quantidade de cotas/ações que gerou o provento muda — o valor em
-        // dinheiro efetivamente recebido (ValorRecebido) é fato histórico e não é recalculado.
+        foreach (var artificial in transacoesArtificiaisEvento)
+        {
+            backupTransacoes.Add(new BackupTransacaoEventoItem(
+                TransacaoId: artificial.Id,
+                PapelAnteriorId: papel.Id,
+                PapelAtualId: papel.Id,
+                CodigoAnterior: papel.Codigo,
+                CodigoAtual: papel.Codigo,
+                DataAcao: request.Data,
+                TipoAcao: tipoAcao,
+                FatorMultiplicador: request.Fator,
+                DataTransacao: artificial.Data,
+                TipoTransacao: artificial.TipoTransacao.ToString(),
+                QuantidadeAnterior: artificial.Quantidade,
+                QuantidadeAtual: 0m,
+                ValorAnterior: artificial.ValorUnitario,
+                ValorAtual: 0m,
+                Descricao: artificial.Descricao));
+        }
+
+        var backupDividendos = new List<BackupDividendoEventoItem>();
         foreach (var dividendo in dividendos)
         {
-            dividendo.Quantidade *= multiplicadorQuantidade;
+            var qtdAnterior = dividendo.Quantidade;
+            var qtdAtual = qtdAnterior * multiplicadorQuantidade;
+
+            backupDividendos.Add(new BackupDividendoEventoItem(
+                DividendoId: dividendo.Id,
+                PapelAnteriorId: papel.Id,
+                PapelAtualId: papel.Id,
+                CodigoAnterior: papel.Codigo,
+                CodigoAtual: papel.Codigo,
+                DataAcao: request.Data,
+                TipoAcao: tipoAcao,
+                FatorMultiplicador: request.Fator,
+                DataDividendo: dividendo.Data,
+                TipoDividendo: dividendo.TipoDividendo.ToString(),
+                QuantidadeAnterior: qtdAnterior,
+                QuantidadeAtual: qtdAtual,
+                ValorAnterior: dividendo.ValorRecebido,
+                ValorAtual: dividendo.ValorRecebido,
+                Descricao: dividendo.Descricao));
+
+            dividendo.Quantidade = qtdAtual;
             dividendo.Historico = true;
             dividendo.Descricao = string.IsNullOrWhiteSpace(dividendo.Descricao) ? marcador : $"{dividendo.Descricao} {marcador}";
         }
-        await _dividendoRepository.AtualizarEmLoteAsync(dividendos, ct);
+
+        if (_mongoBackupService is not null)
+        {
+            await _mongoBackupService.RegistrarBackupEventoPapelAsync(backupTransacoes, backupDividendos, ct);
+        }
+
+        if (transacoes.Count > 0)
+        {
+            await _transacaoRepository.AtualizarEmLoteAsync(transacoes, ct);
+        }
+        if (transacoesArtificiaisEvento.Count > 0)
+        {
+            await _transacaoRepository.RemoverEmLoteAsync(transacoesArtificiaisEvento, ct);
+        }
+        if (dividendos.Count > 0)
+        {
+            await _dividendoRepository.AtualizarEmLoteAsync(dividendos, ct);
+        }
+
+        var transacoesRestantes = await _transacaoRepository.ListarPorPapelAsync(papel.Id, ct);
+        papel.Ativo = CalculadoraPosicao.Calcular(transacoesRestantes).QuantidadeAtual > 0;
+        await _papelRepository.AtualizarAsync(papel, ct);
 
         return ParaResponse(await ObterOuFalharAsync(papel.Id, ct));
+    }
+
+    private static bool EhTransacaoArtificialDeEventoB3(string? descricao, TipoEventoPapel tipo)
+    {
+        if (string.IsNullOrWhiteSpace(descricao)) return false;
+        return tipo == TipoEventoPapel.Grupamento
+            ? descricao.Contains("Importado da B3: Grupamento", StringComparison.OrdinalIgnoreCase)
+            : descricao.Contains("Importado da B3: Desdobro", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task ValidarSegmentosAsync(IReadOnlyList<Guid>? segmentoIds, CancellationToken ct)
