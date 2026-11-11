@@ -240,6 +240,9 @@ else
 <!-- Modal: Troca de Papel -->
 @if (_modeloTroca is not null)
 {
+    var papeisFiltradosTroca = ObterPapeisDestinoFiltrados().ToList();
+    var papelSelecionadoTroca = _todosPapeis?.FirstOrDefault(x => x.Id == _modeloTroca.PapelDestinoId);
+
     <div class="overlay modal-overlay">
         <button type="button" class="overlay-close" @onclick="() => _modeloTroca = null"></button>
         <section class="card modal">
@@ -259,23 +262,64 @@ else
                     </p>
                     <div class="field">
                         <span>Papel de destino</span>
-                        <InputSelect @bind-Value="_modeloTroca.PapelDestinoId">
-                            <option value="@Guid.Empty">Selecione o papel de destino...</option>
-                            @if (_todosPapeis is not null)
-                            {
-                                @foreach (var p in _todosPapeis.Where(x => x.Id != _papelTrocaId))
+                        <div class="searchable-select-wrap">
+                            <div class="search-field" style="min-width:0;">
+                                <Icon Name="search" Size="15" />
+                                <input type="text"
+                                       placeholder="Pesquisar papel por código ou nome..."
+                                       value="@_buscaPapelDestino"
+                                       @oninput="OnBuscaPapelDestinoAlterada" />
+                                @if (!string.IsNullOrEmpty(_buscaPapelDestino))
                                 {
-                                    <option value="@p.Id">@p.Codigo - @p.Nome</option>
+                                    <button type="button" class="icon-btn" style="width:24px;height:24px;" title="Limpar busca" @onclick="() => _buscaPapelDestino = string.Empty">
+                                        <Icon Name="close" Size="13" />
+                                    </button>
                                 }
+                            </div>
+
+                            @if (papelSelecionadoTroca is not null)
+                            {
+                                <div class="searchable-select-selected-pill">
+                                    <span>Selecionado: <strong>@papelSelecionadoTroca.Codigo</strong> — @papelSelecionadoTroca.Nome</span>
+                                    <button type="button" class="icon-btn" style="width:22px;height:22px;color:var(--primary);" title="Remover seleção" @onclick="() => _modeloTroca.PapelDestinoId = Guid.Empty">
+                                        <Icon Name="close" Size="13" />
+                                    </button>
+                                </div>
                             }
-                        </InputSelect>
-                        <ValidationMessage For="@(() => _modeloTroca.PapelDestinoId)" />
+
+                            <div class="searchable-select-list">
+                                @if (papeisFiltradosTroca.Count == 0)
+                                {
+                                    <div class="searchable-select-empty">Nenhum papel encontrado para "@_buscaPapelDestino".</div>
+                                }
+                                else
+                                {
+                                    @foreach (var p in papeisFiltradosTroca)
+                                    {
+                                        var selecionado = _modeloTroca.PapelDestinoId == p.Id;
+                                        <button type="button"
+                                                class="searchable-select-item @(selecionado ? "selected" : "")"
+                                                @onclick="() => SelecionarPapelDestino(p.Id)">
+                                            <span class="item-main">
+                                                <span class="item-code">@p.Codigo</span>
+                                                <span class="item-name">@p.Nome</span>
+                                            </span>
+                                            <span class="badge badge-info">@p.TipoPapel</span>
+                                        </button>
+                                    }
+                                }
+                            </div>
+                        </div>
+                        @if (_erroValidacaoTroca is not null)
+                        {
+                            <div class="validation-message">@_erroValidacaoTroca</div>
+                        }
                     </div>
                 </div>
 
                 <div class="drawer-actions">
                     <button type="button" class="btn btn-secondary" @onclick="() => _modeloTroca = null">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                    <button type="submit" class="btn btn-primary" disabled="@(_salvando || _modeloTroca.PapelDestinoId == Guid.Empty)">
                         @(_salvando ? "Trocando..." : "Confirmar troca")
                     </button>
                 </div>
@@ -464,6 +508,8 @@ else
 
     private FormTrocaCodigo? _modeloTroca;
     private Guid _papelTrocaId;
+    private string _buscaPapelDestino = string.Empty;
+    private string? _erroValidacaoTroca;
 
     private FormDesdobramento? _modeloDesdobramento;
     private Guid _papelDesdobramentoId;
@@ -599,15 +645,49 @@ else
     private void AbrirTrocaAsync(PapelResponse papel)
     {
         _papelTrocaId = papel.Id;
+        _buscaPapelDestino = string.Empty;
+        _erroValidacaoTroca = null;
         _modeloTroca = new FormTrocaCodigo { CodigoAtual = papel.Codigo };
+    }
+
+    private void OnBuscaPapelDestinoAlterada(ChangeEventArgs e)
+    {
+        _buscaPapelDestino = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void SelecionarPapelDestino(Guid id)
+    {
+        if (_modeloTroca is null) return;
+        _modeloTroca.PapelDestinoId = id;
+        _erroValidacaoTroca = null;
+    }
+
+    private IEnumerable<PapelResponse> ObterPapeisDestinoFiltrados()
+    {
+        if (_todosPapeis is null) return [];
+        var itens = _todosPapeis.Where(x => x.Id != _papelTrocaId).OrderBy(x => x.Codigo).AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_buscaPapelDestino))
+        {
+            var termo = _buscaPapelDestino.Trim();
+            itens = itens.Where(p =>
+                p.Codigo.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
+                p.Nome.Contains(termo, StringComparison.OrdinalIgnoreCase));
+        }
+        return itens;
     }
 
     private async Task ExecutarTrocaAsync()
     {
-        if (_modeloTroca is null || _modeloTroca.PapelDestinoId == Guid.Empty) return;
+        if (_modeloTroca is null) return;
+        if (_modeloTroca.PapelDestinoId == Guid.Empty)
+        {
+            _erroValidacaoTroca = "Selecione o papel de destino.";
+            return;
+        }
         _salvando = true;
         _mensagemErro = null;
         _mensagemSucesso = null;
+        _erroValidacaoTroca = null;
         try
         {
             await ApiClient.TrocarPapelAsync(_papelTrocaId, new TrocarPapelRequest(_modeloTroca.PapelDestinoId));

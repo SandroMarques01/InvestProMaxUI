@@ -2936,3 +2936,97 @@ tfoot th {
     padding-right: 8px !important;
   }
 }
+
+/* Searchable Select (Papel de Destino) */
+.searchable-select-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.searchable-select-list {
+  max-height: 210px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input-bg);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  gap: 2px;
+}
+
+.searchable-select-item {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 12px;
+  transition: background .12s ease, border-color .12s ease;
+}
+
+.searchable-select-item:hover {
+  background: var(--table-row-hover);
+}
+
+.searchable-select-item.selected {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.searchable-select-item .item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.searchable-select-item .item-code {
+  font-weight: 700;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.searchable-select-item .item-name {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.searchable-select-empty {
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.searchable-select-selected-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  font-size: 12px;
+}
+
+.searchable-select-selected-pill strong {
+  font-weight: 700;
+}
+

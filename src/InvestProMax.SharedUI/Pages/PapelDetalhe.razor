@@ -27,6 +27,10 @@ else
     {
         <div class="alerta-erro">@_mensagemErro</div>
     }
+    @if (_mensagemSucesso is not null)
+    {
+        <div class="alerta-sucesso">@_mensagemSucesso</div>
+    }
     var papel = _detalhe.Papel;
     var totalInvestido = papel.QuantidadeAtual * papel.PrecoMedio;
     var totalAtual = papel.QuantidadeAtual * papel.CotacaoAtual;
@@ -42,9 +46,15 @@ else
             <h1>@papel.Codigo</h1>
         </div>
         <div class="page-actions">
-            <a href="papeis" class="btn btn-secondary">
-                <Icon Name="edit" Size="16" /><span>Gerenciar papéis</span>
-            </a>
+            <button type="button" class="btn btn-secondary" @onclick="() => EditarAsync(papel)">
+                <Icon Name="edit" Size="16" /><span>Editar</span>
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="() => AbrirDesdobramento(papel)">
+                <Icon Name="arrow" Size="16" /><span>Desdobrar / Agrupar</span>
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="() => AbrirTrocaAsync(papel)">
+                <Icon Name="refresh" Size="16" /><span>Trocar papel</span>
+            </button>
             <a href="transacoes" class="btn btn-primary">
                 <Icon Name="plus" Size="16" /><span>Nova transação</span>
             </a>
@@ -283,6 +293,220 @@ else
     }
 }
 
+<!-- Drawer: Editar Papel -->
+@if (_modeloForm is not null)
+{
+    <div class="overlay">
+        <button type="button" class="overlay-close" @onclick="CancelarFormulario"></button>
+        <div class="drawer">
+            <div class="drawer-head">
+                <div>
+                    <span>Formulário de papel</span>
+                    <h2>Editar @_modeloForm.Codigo</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="CancelarFormulario"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modeloForm" OnValidSubmit="SalvarAsync" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+                <DataAnnotationsValidator />
+
+                <div class="drawer-body">
+                    <div class="field">
+                        <span>Nome da empresa / fundo</span>
+                        <InputText @bind-Value="_modeloForm.Nome" placeholder="Ex: Petrobras PN" />
+                        <ValidationMessage For="@(() => _modeloForm.Nome)" />
+                    </div>
+
+                    <div class="field">
+                        <span>Tipo de papel</span>
+                        <InputSelect @bind-Value="_modeloForm.TipoPapel">
+                            @foreach (var tipo in Enum.GetValues<TipoPapel>())
+                            {
+                                <option value="@tipo">@tipo</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="field">
+                        <span>Cotação atual (R$)</span>
+                        <InputNumber @bind-Value="_modeloForm.CotacaoAtual" step="0.01" />
+                        <ValidationMessage For="@(() => _modeloForm.CotacaoAtual)" />
+                    </div>
+
+                    <div class="field">
+                        <span>Descrição (opcional)</span>
+                        <InputTextArea @bind-Value="_modeloForm.Descricao" placeholder="Anotações sobre a tese de investimento..." />
+                    </div>
+
+                    @if (_segmentosDisponiveis is not null && _segmentosDisponiveis.Count > 0)
+                    {
+                        <div class="field">
+                            <span>Segmentos vinculados</span>
+                            <div style="max-height: 140px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px;">
+                                @foreach (var seg in _segmentosDisponiveis)
+                                {
+                                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; margin-bottom: 6px; cursor: pointer;">
+                                        <input type="checkbox" checked="@_segmentosSelecionados.Contains(seg.Id)"
+                                               @onchange="(e) => AlternarSegmento(seg.Id, e.Value)" />
+                                        <span>@seg.Nome</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelarFormulario">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                        @(_salvando ? "Salvando..." : "Salvar papel")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<!-- Modal: Troca de Papel -->
+@if (_modeloTroca is not null)
+{
+    var papeisFiltradosTroca = ObterPapeisDestinoFiltrados().ToList();
+    var papelSelecionadoTroca = _todosPapeis?.FirstOrDefault(x => x.Id == _modeloTroca.PapelDestinoId);
+
+    <div class="overlay modal-overlay">
+        <button type="button" class="overlay-close" @onclick="() => _modeloTroca = null"></button>
+        <section class="card modal">
+            <div class="drawer-head">
+                <div>
+                    <span>Operação de custódia</span>
+                    <h2>Trocar papel (@_modeloTroca.CodigoAtual)</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="() => _modeloTroca = null"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modeloTroca" OnValidSubmit="ExecutarTrocaAsync">
+                <DataAnnotationsValidator />
+                <div class="drawer-body">
+                    <p style="margin-top:0;color:var(--muted);font-size:11px;">
+                        Transfere todas as transações, dividendos e aluguéis deste papel para o papel de destino selecionado, desativando o papel de origem.
+                    </p>
+                    <div class="field">
+                        <span>Papel de destino</span>
+                        <div class="searchable-select-wrap">
+                            <div class="search-field" style="min-width:0;">
+                                <Icon Name="search" Size="15" />
+                                <input type="text"
+                                       placeholder="Pesquisar papel por código ou nome..."
+                                       value="@_buscaPapelDestino"
+                                       @oninput="OnBuscaPapelDestinoAlterada" />
+                                @if (!string.IsNullOrEmpty(_buscaPapelDestino))
+                                {
+                                    <button type="button" class="icon-btn" style="width:24px;height:24px;" title="Limpar busca" @onclick="() => _buscaPapelDestino = string.Empty">
+                                        <Icon Name="close" Size="13" />
+                                    </button>
+                                }
+                            </div>
+
+                            @if (papelSelecionadoTroca is not null)
+                            {
+                                <div class="searchable-select-selected-pill">
+                                    <span>Selecionado: <strong>@papelSelecionadoTroca.Codigo</strong> — @papelSelecionadoTroca.Nome</span>
+                                    <button type="button" class="icon-btn" style="width:22px;height:22px;color:var(--primary);" title="Remover seleção" @onclick="() => _modeloTroca.PapelDestinoId = Guid.Empty">
+                                        <Icon Name="close" Size="13" />
+                                    </button>
+                                </div>
+                            }
+
+                            <div class="searchable-select-list">
+                                @if (papeisFiltradosTroca.Count == 0)
+                                {
+                                    <div class="searchable-select-empty">Nenhum papel encontrado para "@_buscaPapelDestino".</div>
+                                }
+                                else
+                                {
+                                    @foreach (var p in papeisFiltradosTroca)
+                                    {
+                                        var selecionado = _modeloTroca.PapelDestinoId == p.Id;
+                                        <button type="button"
+                                                class="searchable-select-item @(selecionado ? "selected" : "")"
+                                                @onclick="() => SelecionarPapelDestino(p.Id)">
+                                            <span class="item-main">
+                                                <span class="item-code">@p.Codigo</span>
+                                                <span class="item-name">@p.Nome</span>
+                                            </span>
+                                            <span class="badge badge-info">@p.TipoPapel</span>
+                                        </button>
+                                    }
+                                }
+                            </div>
+                        </div>
+                        @if (_erroValidacaoTroca is not null)
+                        {
+                            <div class="validation-message">@_erroValidacaoTroca</div>
+                        }
+                    </div>
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _modeloTroca = null">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@(_salvando || _modeloTroca.PapelDestinoId == Guid.Empty)">
+                        @(_salvando ? "Trocando..." : "Confirmar troca")
+                    </button>
+                </div>
+            </EditForm>
+        </section>
+    </div>
+}
+
+<!-- Modal: Desdobramento / Grupamento -->
+@if (_modeloDesdobramento is not null)
+{
+    <div class="overlay modal-overlay">
+        <button type="button" class="overlay-close" @onclick="() => _modeloDesdobramento = null"></button>
+        <section class="card modal">
+            <div class="drawer-head">
+                <div>
+                    <span>Evento corporativo</span>
+                    <h2>Desdobramento / Grupamento</h2>
+                </div>
+                <button type="button" class="icon-btn" @onclick="() => _modeloDesdobramento = null"><Icon Name="close" Size="18" /></button>
+            </div>
+
+            <EditForm Model="_modeloDesdobramento" OnValidSubmit="ExecutarDesdobramentoAsync">
+                <DataAnnotationsValidator />
+                <div class="drawer-body">
+                    <div class="field">
+                        <span>Tipo de evento</span>
+                        <InputSelect @bind-Value="_modeloDesdobramento.Tipo">
+                            <option value="@TipoEventoPapel.Desdobramento">Desdobramento (Split)</option>
+                            <option value="@TipoEventoPapel.Grupamento">Grupamento (Inplit)</option>
+                        </InputSelect>
+                    </div>
+                    <div class="form-grid" style="margin-top: 14px;">
+                        <div class="field">
+                            <span>Fator multiplicador</span>
+                            <InputNumber @bind-Value="_modeloDesdobramento.Fator" step="0.0001" />
+                            <ValidationMessage For="@(() => _modeloDesdobramento.Fator)" />
+                        </div>
+                        <div class="field">
+                            <span>Data do evento</span>
+                            <InputDate @bind-Value="_modeloDesdobramento.Data" />
+                            <ValidationMessage For="@(() => _modeloDesdobramento.Data)" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _modeloDesdobramento = null">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_salvando">
+                        @(_salvando ? "Processando..." : "Aplicar evento")
+                    </button>
+                </div>
+            </EditForm>
+        </section>
+    </div>
+}
+
 @code {
     private static readonly CultureInfo Br = new("pt-BR");
 
@@ -291,7 +515,24 @@ else
 
     private PapelDetalheResponse? _detalhe;
     private string? _mensagemErro;
+    private string? _mensagemSucesso;
     private string _abaAtiva = "transacoes";
+    private bool _salvando;
+
+    private List<PapelResponse>? _todosPapeis;
+    private IReadOnlyList<SegmentoResponse>? _segmentosDisponiveis;
+
+    private Guid? _editandoId;
+    private FormPapel? _modeloForm;
+    private readonly HashSet<Guid> _segmentosSelecionados = new();
+
+    private FormTrocaCodigo? _modeloTroca;
+    private Guid _papelTrocaId;
+    private string _buscaPapelDestino = string.Empty;
+    private string? _erroValidacaoTroca;
+
+    private FormDesdobramento? _modeloDesdobramento;
+    private Guid _papelDesdobramentoId;
 
     private string _colTrans = "Data";
     private bool _ascTrans = false;
@@ -418,4 +659,235 @@ else
     private static string Moeda(decimal v) => v.ToString("C2", Br);
     private static string Pct(decimal v) => v.ToString("N2", Br) + "%";
     private static string Data(DateOnly d) => d.ToString("dd/MM/yyyy", Br);
+
+    private async Task EditarAsync(PapelResponse papel)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        if (_segmentosDisponiveis is null)
+        {
+            try
+            {
+                var resSegmentos = await ApiClient.ListarSegmentosAsync(page: 1, pageSize: 500);
+                _segmentosDisponiveis = resSegmentos.Itens;
+            }
+            catch (ApiException ex)
+            {
+                _mensagemErro = ex.Message;
+            }
+        }
+
+        _editandoId = papel.Id;
+        _segmentosSelecionados.Clear();
+        foreach (var id in papel.SegmentoIds)
+        {
+            _segmentosSelecionados.Add(id);
+        }
+        _modeloForm = new FormPapel
+        {
+            Codigo = papel.Codigo,
+            Nome = papel.Nome,
+            TipoPapel = papel.TipoPapel,
+            CotacaoAtual = papel.CotacaoAtual,
+            Descricao = papel.Descricao
+        };
+    }
+
+    private void CancelarFormulario()
+    {
+        _modeloForm = null;
+        _editandoId = null;
+    }
+
+    private void AlternarSegmento(Guid id, object? valor)
+    {
+        if (valor is true)
+            _segmentosSelecionados.Add(id);
+        else
+            _segmentosSelecionados.Remove(id);
+    }
+
+    private async Task SalvarAsync()
+    {
+        if (_modeloForm is null || _editandoId is null) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.AtualizarPapelAsync(_editandoId.Value, new AtualizarPapelRequest(
+                _modeloForm.Nome,
+                _modeloForm.TipoPapel,
+                _modeloForm.CotacaoAtual,
+                _modeloForm.Descricao,
+                _segmentosSelecionados.ToList()));
+            _mensagemSucesso = "Papel atualizado com sucesso!";
+            _modeloForm = null;
+            _editandoId = null;
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private async Task AbrirTrocaAsync(PapelResponse papel)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        if (_todosPapeis is null)
+        {
+            try
+            {
+                var todos = new List<PapelResponse>();
+                var pag = 1;
+                while (true)
+                {
+                    var r = await ApiClient.ListarPapeisAsync(null, page: pag, pageSize: 5000);
+                    todos.AddRange(r.Itens);
+                    if (todos.Count >= r.Total || r.Itens.Count == 0)
+                        break;
+                    pag++;
+                }
+                _todosPapeis = todos;
+            }
+            catch (ApiException ex)
+            {
+                _mensagemErro = ex.Message;
+                return;
+            }
+        }
+
+        _papelTrocaId = papel.Id;
+        _buscaPapelDestino = string.Empty;
+        _erroValidacaoTroca = null;
+        _modeloTroca = new FormTrocaCodigo { CodigoAtual = papel.Codigo };
+    }
+
+    private void OnBuscaPapelDestinoAlterada(ChangeEventArgs e)
+    {
+        _buscaPapelDestino = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void SelecionarPapelDestino(Guid id)
+    {
+        if (_modeloTroca is null) return;
+        _modeloTroca.PapelDestinoId = id;
+        _erroValidacaoTroca = null;
+    }
+
+    private IEnumerable<PapelResponse> ObterPapeisDestinoFiltrados()
+    {
+        if (_todosPapeis is null) return [];
+        var itens = _todosPapeis.Where(x => x.Id != _papelTrocaId).OrderBy(x => x.Codigo).AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_buscaPapelDestino))
+        {
+            var termo = _buscaPapelDestino.Trim();
+            itens = itens.Where(p =>
+                p.Codigo.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
+                p.Nome.Contains(termo, StringComparison.OrdinalIgnoreCase));
+        }
+        return itens;
+    }
+
+    private async Task ExecutarTrocaAsync()
+    {
+        if (_modeloTroca is null) return;
+        if (_modeloTroca.PapelDestinoId == Guid.Empty)
+        {
+            _erroValidacaoTroca = "Selecione o papel de destino.";
+            return;
+        }
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        _erroValidacaoTroca = null;
+        try
+        {
+            var destinoId = _modeloTroca.PapelDestinoId;
+            await ApiClient.TrocarPapelAsync(_papelTrocaId, new TrocarPapelRequest(destinoId));
+            _modeloTroca = null;
+            Navegacao.NavigateTo($"/papeis/{destinoId}");
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private void AbrirDesdobramento(PapelResponse papel)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        _papelDesdobramentoId = papel.Id;
+        _modeloDesdobramento = new FormDesdobramento();
+    }
+
+    private async Task ExecutarDesdobramentoAsync()
+    {
+        if (_modeloDesdobramento is null) return;
+        _salvando = true;
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        try
+        {
+            await ApiClient.DesdobrarPapelAsync(_papelDesdobramentoId, new DesdobramentoRequest(
+                _modeloDesdobramento.Fator,
+                _modeloDesdobramento.Data,
+                _modeloDesdobramento.Tipo));
+            _mensagemSucesso = "Evento corporativo aplicado com sucesso!";
+            _modeloDesdobramento = null;
+            await CarregarAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private sealed class FormPapel
+    {
+        public string Codigo { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe o nome.")]
+        public string Nome { get; set; } = string.Empty;
+
+        public TipoPapel TipoPapel { get; set; } = TipoPapel.Acao;
+
+        [System.ComponentModel.DataAnnotations.Range(0, double.MaxValue, ErrorMessage = "A cotação deve ser positiva.")]
+        public decimal CotacaoAtual { get; set; }
+
+        public string? Descricao { get; set; }
+    }
+
+    private sealed class FormTrocaCodigo
+    {
+        public string CodigoAtual { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Selecione o papel de destino.")]
+        public Guid PapelDestinoId { get; set; }
+    }
+
+    private sealed class FormDesdobramento
+    {
+        public TipoEventoPapel Tipo { get; set; } = TipoEventoPapel.Desdobramento;
+
+        [System.ComponentModel.DataAnnotations.Range(0.0001, double.MaxValue, ErrorMessage = "O fator deve ser maior que zero.")]
+        public decimal Fator { get; set; } = 2;
+
+        public DateOnly Data { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    }
 }
