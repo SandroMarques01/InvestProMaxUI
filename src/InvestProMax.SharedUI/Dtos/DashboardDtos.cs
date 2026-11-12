@@ -1,7 +1,13 @@
 namespace InvestProMax.SharedUI.Dtos;
 
-/// <summary>Ordem dos blocos do Dashboard (KPIs e gráficos/grids) salva por usuário no MongoDB.</summary>
-public sealed record DashboardLayoutDto(IReadOnlyList<string> Kpis, IReadOnlyList<string> Cards);
+/// <summary>Dimensão individual de um bloco do Dashboard (Colunas na grade de 12 colunas e Altura).</summary>
+public sealed record DashboardItemDimensaoDto(int Colunas, string Altura);
+
+/// <summary>Ordem e dimensões dos blocos visíveis do Dashboard (KPIs e gráficos/grids) salvas por usuário no MongoDB.</summary>
+public sealed record DashboardLayoutDto(
+    IReadOnlyList<string> Kpis,
+    IReadOnlyList<string> Cards,
+    IReadOnlyDictionary<string, DashboardItemDimensaoDto>? Dimensoes = null);
 
 public sealed record DividendoPorMes(int Ano, int Mes, decimal Total);
 

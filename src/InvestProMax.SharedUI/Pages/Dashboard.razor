@@ -61,7 +61,7 @@ else
     {
         <div class="dashboard-edit-banner">
             <span>
-                <strong>Modo de personalização ativo:</strong> arraste os KPIs entre si ou os gráficos e grids entre si para reordenar. Clique em <strong>Salvar layout</strong> para gravar no MongoDB.
+                <strong>Modo de personalização ativo:</strong> arraste para reordenar, ajuste <strong>Largura</strong> (1/5, 1/4, 1/3, 1/2, 2/3, 3/4, 100%) e <strong>Altura</strong>, ou retire/reinsira itens usando a barra inferior de itens ocultos. Clique em <strong>Salvar layout</strong> para gravar no MongoDB.
             </span>
         </div>
     }
@@ -83,222 +83,304 @@ else
         ? (_dashboard.DividendosNoMes / totalInvestidoAteMesAnterior) * 100m
         : 0m;
 
-    <div class="kpi-grid five">
-        @foreach (var kpiId in _ordemKpis)
-        {
-            var id = kpiId;
-            <section @key="id"
-                     class="@ObterClasseKpi(id)"
-                     draggable="@(_editandoLayout ? "true" : "false")"
-                     @ondragstart="() => IniciarArrasteKpi(id)"
+    @if (_ordemKpis.Count > 0 || _editandoLayout)
+    {
+        <div class="dashboard-kpis-grid">
+            @if (_ordemKpis.Count == 0 && _editandoLayout)
+            {
+                <div class="dashboard-empty-dropzone @(_sobreAreaKpisVazia ? "drag-over" : "")"
                      @ondragover:preventDefault="true"
-                     @ondragenter="() => AoEntrarAlvoKpi(id)"
-                     @ondrop="() => SoltarKpi(id)"
-                     @ondragend="FinalizarArraste">
-                @switch (id)
-                {
-                    case "patrimonio-total":
-                        <div class="kpi-top">
-                            <span>@if (_editandoLayout) { <span class="drag-handle">⠿</span> }Patrimônio total (Mês atual)</span>
-                            <div class="kpi-icon"><Icon Name="assets" Size="16" /></div>
-                        </div>
-                        <strong>@FormatarMoeda(_dashboard.PatrimonioTotal)</strong>
-                        <div class="kpi-meta">
-                            <span>@(_dashboard.PatrimonioMes is not null ? $"Competência: {_dashboard.PatrimonioMes:00}/{_dashboard.PatrimonioAno}" : "Posição consolidada da carteira")</span>
-                        </div>
-                        break;
-
-                    case "total-atual":
-                        <div class="kpi-top">
-                            <span>@if (_editandoLayout) { <span class="drag-handle">⠿</span> }Total atual (Carteira)</span>
-                            <div class="kpi-icon"><Icon Name="papers" Size="16" /></div>
-                        </div>
-                        <strong>@FormatarMoeda(_dashboard.TotalAtualCarteira)</strong>
-                        <div class="kpi-meta">
-                            <span>Valor a mercado das posições</span>
-                        </div>
-                        break;
-
-                    case "total-investido":
-                        <div class="kpi-top">
-                            <span>@if (_editandoLayout) { <span class="drag-handle">⠿</span> }Total investido (Carteira)</span>
-                            <div class="kpi-icon"><Icon Name="transaction" Size="16" /></div>
-                        </div>
-                        <strong>@FormatarMoeda(_dashboard.TotalInvestidoCarteira)</strong>
-                        <div class="kpi-meta">
-                            <span>Custo das posições em aberto</span>
-                        </div>
-                        break;
-
-                    case "ganho-perda":
-                        <div class="kpi-top">
-                            <span>@if (_editandoLayout) { <span class="drag-handle">⠿</span> }Ganho / Perda da carteira</span>
-                            <div class="kpi-icon @(ehPositivo ? "positive" : "negative")">
-                                <Icon Name="papers" Size="16" />
+                     @ondragenter="() => _sobreAreaKpisVazia = true"
+                     @ondragleave="() => _sobreAreaKpisVazia = false"
+                     @ondrop="SoltarEmAreaKpisVazia">
+                    Todos os KPIs estão ocultos. Arraste um KPI da barra inferior para cá ou clique em <strong>+ Exibir no Dash</strong>.
+                </div>
+            }
+            @foreach (var kpiId in _ordemKpis)
+            {
+                var id = kpiId;
+                <section @key="id"
+                         class="@ObterClasseKpi(id)"
+                         draggable="@(_editandoLayout ? "true" : "false")"
+                         @ondragstart="() => IniciarArrasteKpi(id)"
+                         @ondragover:preventDefault="true"
+                         @ondragenter="() => AoEntrarAlvoKpi(id)"
+                         @ondrop="() => SoltarKpi(id)"
+                         @ondragend="FinalizarArraste">
+                    @if (_editandoLayout)
+                    {
+                        <div class="dashboard-item-toolbar" @onclick:stopPropagation="true">
+                            <span class="drag-handle" title="Arraste para reordenar ou mover para a barra inferior">⠿ Arrastar</span>
+                            <div class="dashboard-item-controls">
+                                <div class="dash-ctrl-group" title="Largura na grade de 12 colunas">
+                                    <button type="button" class="dash-ctrl-btn" @onclick="() => AlterarLargura(id, -1)" disabled="@(!PodeDiminuirLargura(id))">−</button>
+                                    <select class="dash-ctrl-select" value="@ObterColunas(id)" @onchange="e => DefinirLargura(id, e.Value)">
+                                        @foreach (var op in OpcoesLargura)
+                                        {
+                                            <option value="@op.Colunas">@op.Rotulo</option>
+                                        }
+                                    </select>
+                                    <button type="button" class="dash-ctrl-btn" @onclick="() => AlterarLargura(id, 1)" disabled="@(!PodeAumentarLargura(id))">+</button>
+                                </div>
+                                <div class="dash-ctrl-group" title="Altura do card">
+                                    <span class="dash-ctrl-label">Alt</span>
+                                    <select class="dash-ctrl-select" value="@ObterAltura(id)" @onchange="e => DefinirAltura(id, e.Value)">
+                                        @foreach (var alt in OpcoesAltura)
+                                        {
+                                            <option value="@alt.Codigo">@alt.Rotulo</option>
+                                        }
+                                    </select>
+                                </div>
+                                <button type="button" class="dash-ctrl-remove" title="Retirar do Dashboard" @onclick="() => OcultarKpi(id)">✕</button>
                             </div>
                         </div>
-                        <strong class="@(ehPositivo ? "positive" : "negative")">@FormatarMoeda(_dashboard.GanhoTotalCarteira)</strong>
-                        <div class="kpi-meta @(ehPositivo ? "positive" : "negative")">
-                            <span>@(ehPositivo ? "+" : "")@rendimentoCarteira.ToString("P2") sobre o custo</span>
-                        </div>
-                        break;
+                    }
+                    @switch (id)
+                    {
+                        case "patrimonio-total":
+                            <div class="kpi-top">
+                                <span>Patrimônio total (Mês atual)</span>
+                                <div class="kpi-icon"><Icon Name="assets" Size="16" /></div>
+                            </div>
+                            <strong>@FormatarMoeda(_dashboard.PatrimonioTotal)</strong>
+                            <div class="kpi-meta">
+                                <span>@(_dashboard.PatrimonioMes is not null ? $"Competência: {_dashboard.PatrimonioMes:00}/{_dashboard.PatrimonioAno}" : "Posição consolidada da carteira")</span>
+                            </div>
+                            break;
 
-                    case "dividendos-mes":
-                        <div class="kpi-top">
-                            <span>@if (_editandoLayout) { <span class="drag-handle">⠿</span> }Dividendos no mês</span>
-                            <div class="kpi-icon positive"><Icon Name="dividend" Size="16" /></div>
-                        </div>
-                        <strong class="positive">@FormatarMoeda(_dashboard.DividendosNoMes)</strong>
-                        <div class="kpi-meta" style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
-                            <span class="positive" title="Percentual do dividendo do mês pelo valor total investido até o mês anterior (@FormatarMoeda(totalInvestidoAteMesAnterior))">
-                                @pctDividendoMesSobreInvestidoAnterior.ToString("N2")% sobre investido até mês ant.
-                            </span>
-                            <span>Total histórico: @FormatarMoeda(_dashboard.TotalDividendosHistorico)</span>
-                        </div>
-                        break;
-                }
-            </section>
-        }
-    </div>
+                        case "total-atual":
+                            <div class="kpi-top">
+                                <span>Total atual (Carteira)</span>
+                                <div class="kpi-icon"><Icon Name="papers" Size="16" /></div>
+                            </div>
+                            <strong>@FormatarMoeda(_dashboard.TotalAtualCarteira)</strong>
+                            <div class="kpi-meta">
+                                <span>Valor a mercado das posições</span>
+                            </div>
+                            break;
 
-    <div class="dashboard-cards-grid">
-        @foreach (var cardId in _ordemCards)
-        {
-            var id = cardId;
-            <section @key="id"
-                     class="@ObterClasseCard(id)"
-                     draggable="@(_editandoLayout ? "true" : "false")"
-                     @ondragstart="() => IniciarArrasteCard(id)"
+                        case "total-investido":
+                            <div class="kpi-top">
+                                <span>Total investido (Carteira)</span>
+                                <div class="kpi-icon"><Icon Name="transaction" Size="16" /></div>
+                            </div>
+                            <strong>@FormatarMoeda(_dashboard.TotalInvestidoCarteira)</strong>
+                            <div class="kpi-meta">
+                                <span>Custo das posições em aberto</span>
+                            </div>
+                            break;
+
+                        case "ganho-perda":
+                            <div class="kpi-top">
+                                <span>Ganho / Perda da carteira</span>
+                                <div class="kpi-icon @(ehPositivo ? "positive" : "negative")">
+                                    <Icon Name="papers" Size="16" />
+                                </div>
+                            </div>
+                            <strong class="@(ehPositivo ? "positive" : "negative")">@FormatarMoeda(_dashboard.GanhoTotalCarteira)</strong>
+                            <div class="kpi-meta @(ehPositivo ? "positive" : "negative")">
+                                <span>@(ehPositivo ? "+" : "")@rendimentoCarteira.ToString("P2") sobre o custo</span>
+                            </div>
+                            break;
+
+                        case "dividendos-mes":
+                            <div class="kpi-top">
+                                <span>Dividendos no mês</span>
+                                <div class="kpi-icon positive"><Icon Name="dividend" Size="16" /></div>
+                            </div>
+                            <strong class="positive">@FormatarMoeda(_dashboard.DividendosNoMes)</strong>
+                            <div class="kpi-meta" style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                                <span class="positive" title="Percentual do dividendo do mês pelo valor total investido até o mês anterior (@FormatarMoeda(totalInvestidoAteMesAnterior))">
+                                    @pctDividendoMesSobreInvestidoAnterior.ToString("N2")% sobre investido até mês ant.
+                                </span>
+                                <span>Total histórico: @FormatarMoeda(_dashboard.TotalDividendosHistorico)</span>
+                            </div>
+                            break;
+                    }
+                </section>
+            }
+        </div>
+    }
+
+    @if (_ordemCards.Count > 0 || _editandoLayout)
+    {
+        <div class="dashboard-cards-grid">
+            @if (_ordemCards.Count == 0 && _editandoLayout)
+            {
+                <div class="dashboard-empty-dropzone @(_sobreAreaCardsVazia ? "drag-over" : "")"
                      @ondragover:preventDefault="true"
-                     @ondragenter="() => AoEntrarAlvoCard(id)"
-                     @ondrop="() => SoltarCard(id)"
-                     @ondragend="FinalizarArraste">
-                @switch (id)
-                {
-                    case "alocacao-tipo":
-                        <div class="section-title">
-                            <div>
-                                <h2>@if (_editandoLayout) { <span class="drag-handle">⠿ Arrastar</span> }Alocação por tipo</h2>
-                                <p>Distribuição do patrimônio em carteira (Pizza)</p>
-                            </div>
-                            @if (_dashboard.AlocacaoPorTipoPapel.Count > 0)
-                            {
-                                <div style="font-size: 11px;">
-                                    <span style="color: var(--muted);">Total: </span>
-                                    <strong>@FormatarMoeda(_dashboard.AlocacaoPorTipoPapel.Sum(a => a.Valor))</strong>
+                     @ondragenter="() => _sobreAreaCardsVazia = true"
+                     @ondragleave="() => _sobreAreaCardsVazia = false"
+                     @ondrop="SoltarEmAreaCardsVazia">
+                    Todos os gráficos e grids estão ocultos. Arraste um gráfico ou grid da barra inferior para cá ou clique em <strong>+ Exibir no Dash</strong>.
+                </div>
+            }
+            @foreach (var cardId in _ordemCards)
+            {
+                var id = cardId;
+                <section @key="id"
+                         class="@ObterClasseCard(id)"
+                         draggable="@(_editandoLayout ? "true" : "false")"
+                         @ondragstart="() => IniciarArrasteCard(id)"
+                         @ondragover:preventDefault="true"
+                         @ondragenter="() => AoEntrarAlvoCard(id)"
+                         @ondrop="() => SoltarCard(id)"
+                         @ondragend="FinalizarArraste">
+                    @if (_editandoLayout)
+                    {
+                        <div class="dashboard-item-toolbar" @onclick:stopPropagation="true">
+                            <span class="drag-handle" title="Arraste para reordenar ou mover para a barra inferior">⠿ Arrastar</span>
+                            <div class="dashboard-item-controls">
+                                <div class="dash-ctrl-group" title="Largura na grade de 12 colunas">
+                                    <span class="dash-ctrl-label">Larg</span>
+                                    <button type="button" class="dash-ctrl-btn" @onclick="() => AlterarLargura(id, -1)" disabled="@(!PodeDiminuirLargura(id))">−</button>
+                                    <select class="dash-ctrl-select" value="@ObterColunas(id)" @onchange="e => DefinirLargura(id, e.Value)">
+                                        @foreach (var op in OpcoesLargura)
+                                        {
+                                            <option value="@op.Colunas">@op.Rotulo</option>
+                                        }
+                                    </select>
+                                    <button type="button" class="dash-ctrl-btn" @onclick="() => AlterarLargura(id, 1)" disabled="@(!PodeAumentarLargura(id))">+</button>
                                 </div>
-                            }
+                                <div class="dash-ctrl-group" title="Altura do card">
+                                    <span class="dash-ctrl-label">Altura</span>
+                                    <select class="dash-ctrl-select" value="@ObterAltura(id)" @onchange="e => DefinirAltura(id, e.Value)">
+                                        @foreach (var alt in OpcoesAltura)
+                                        {
+                                            <option value="@alt.Codigo">@alt.Rotulo</option>
+                                        }
+                                    </select>
+                                </div>
+                                <button type="button" class="dash-ctrl-remove" title="Retirar do Dashboard" @onclick="() => OcultarCard(id)">✕ Ocultar</button>
+                            </div>
                         </div>
-
-                        @if (_dashboard.AlocacaoPorTipoPapel.Count == 0)
-                        {
-                            <div style="padding: 30px; text-align: center; color: var(--muted);">
-                                Nenhuma posição ativa em carteira.
-                            </div>
-                        }
-                        else
-                        {
-                            var totalAlocado = _dashboard.AlocacaoPorTipoPapel.Sum(a => a.Valor);
-                            var fatias = CalcularFatiasPizza(_dashboard.AlocacaoPorTipoPapel, totalAlocado);
-
-                            <div class="pizza-chart-wrap">
-                                <svg viewBox="0 0 200 200" class="pizza-svg" aria-label="Gráfico de pizza da alocação da carteira">
-                                    @foreach (var fatia in fatias)
-                                    {
-                                        <path d="@fatia.SvgPath"
-                                              fill="@fatia.Cor"
-                                              stroke="var(--surface)"
-                                              stroke-width="1.5"
-                                              stroke-linejoin="round"
-                                              class="pizza-slice">
-                                            <title>@($"{ObterNomeTipoPapel(fatia.Tipo)}: {FormatarMoeda(fatia.Valor)} ({fatia.Percentual:P1})")</title>
-                                        </path>
-                                    }
-                                </svg>
-                                <div class="chart-legend">
-                                    @foreach (var item in _dashboard.AlocacaoPorTipoPapel)
-                                    {
-                                        var pct = totalAlocado > 0 ? (item.Valor / totalAlocado).ToString("P1") : "0%";
-                                        <div>
-                                            <span class="dot" style="background: @ObterCorTipoPapel(item.TipoPapel);"></span>
-                                            <span>@ObterNomeTipoPapel(item.TipoPapel)</span>
-                                            <strong>@pct</strong>
-                                            <span class="legend-val">@FormatarMoeda(item.Valor)</span>
-                                        </div>
-                                    }
+                    }
+                    @switch (id)
+                    {
+                        case "alocacao-tipo":
+                            <div class="section-title">
+                                <div>
+                                    <h2>Alocação por tipo</h2>
+                                    <p>Distribuição do patrimônio em carteira (Pizza)</p>
                                 </div>
-                            </div>
-                        }
-                        break;
-
-                    case "dividendos-recebidos":
-                        <div class="section-title">
-                            <div>
-                                <h2>@if (_editandoLayout) { <span class="drag-handle">⠿ Arrastar</span> }Dividendos recebidos</h2>
-                                <p>Histórico dos últimos 12 meses (Coluna por mês)</p>
-                            </div>
-                            @if (_dashboard.DividendosPorMes.Count > 0)
-                            {
-                                var total12M = _dashboard.DividendosPorMes.Sum(d => d.Total);
-                                var media12M = total12M / 12m;
-                                <div style="text-align: right; font-size: 11px;">
-                                    <span style="color: var(--muted);">Total 12M: </span><strong class="positive">@FormatarMoeda(total12M)</strong>
-                                    <span style="color: var(--muted); margin-left: 8px;">Média: </span><strong>@FormatarMoeda(media12M)/mês</strong>
-                                </div>
-                            }
-                        </div>
-
-                        var maxDiv = _dashboard.DividendosPorMes.Count > 0 ? _dashboard.DividendosPorMes.Max(d => d.Total) : 0;
-                        if (maxDiv <= 0) maxDiv = 1;
-
-                        <div class="chart-with-grid">
-                            <div class="chart-y-axis">
-                                <div class="grid-line"><span>@FormatarMoedaAbrev(maxDiv)</span></div>
-                                <div class="grid-line"><span>@FormatarMoedaAbrev(maxDiv / 2)</span></div>
-                                <div class="grid-line"><span>R$ 0</span></div>
-                            </div>
-                            <div class="bars-stage">
-                                @foreach (var mes in _dashboard.DividendosPorMes)
+                                @if (_dashboard.AlocacaoPorTipoPapel.Count > 0)
                                 {
-                                    var ehMesAtual = mes.Ano == hoje.Year && mes.Mes == hoje.Month;
-                                    var altura = (double)(mes.Total / maxDiv) * 100;
-                                    var tooltip = $"{mes.Mes:00}/{mes.Ano}: {FormatarMoeda(mes.Total)}";
-
-                                    <div class="bar-col @(ehMesAtual ? "is-current" : "")" title="@tooltip">
-                                        <div class="stack-wrap">
-                                            @if (mes.Total > 0)
-                                            {
-                                                <div class="stack @(ehMesAtual ? "is-current" : "")"
-                                                     style="height: @FormatarAlturaCss(altura); background: linear-gradient(180deg, var(--primary-mid) 0%, var(--primary) 100%);">
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <div style="width: 14px; height: 3px; background: var(--line); border-radius: 2px;"></div>
-                                            }
-                                        </div>
-                                        <span>@($"{mes.Mes:00}/{mes.Ano.ToString()[2..]}")</span>
+                                    <div style="font-size: 11px;">
+                                        <span style="color: var(--muted);">Total: </span>
+                                        <strong>@FormatarMoeda(_dashboard.AlocacaoPorTipoPapel.Sum(a => a.Valor))</strong>
                                     </div>
                                 }
                             </div>
-                        </div>
-                        break;
 
-                    case "aumento-capital":
-                        <div class="section-title">
-                            <div>
-                                <h2>@if (_editandoLayout) { <span class="drag-handle">⠿ Arrastar</span> }Aumento de capital investido</h2>
-                                <p>Evolução nos últimos 12 meses (Coluna)</p>
+                            @if (_dashboard.AlocacaoPorTipoPapel.Count == 0)
+                            {
+                                <div style="padding: 30px; text-align: center; color: var(--muted);">
+                                    Nenhuma posição ativa em carteira.
+                                </div>
+                            }
+                            else
+                            {
+                                var totalAlocado = _dashboard.AlocacaoPorTipoPapel.Sum(a => a.Valor);
+                                var fatias = CalcularFatiasPizza(_dashboard.AlocacaoPorTipoPapel, totalAlocado);
+
+                                <div class="pizza-chart-wrap">
+                                    <svg viewBox="0 0 200 200" class="pizza-svg" aria-label="Gráfico de pizza da alocação da carteira">
+                                        @foreach (var fatia in fatias)
+                                        {
+                                            <path d="@fatia.SvgPath"
+                                                  fill="@fatia.Cor"
+                                                  stroke="var(--surface)"
+                                                  stroke-width="1.5"
+                                                  stroke-linejoin="round"
+                                                  class="pizza-slice">
+                                                <title>@($"{ObterNomeTipoPapel(fatia.Tipo)}: {FormatarMoeda(fatia.Valor)} ({fatia.Percentual:P1})")</title>
+                                            </path>
+                                        }
+                                    </svg>
+                                    <div class="chart-legend">
+                                        @foreach (var item in _dashboard.AlocacaoPorTipoPapel)
+                                        {
+                                            var pct = totalAlocado > 0 ? (item.Valor / totalAlocado).ToString("P1") : "0%";
+                                            <div>
+                                                <span class="dot" style="background: @ObterCorTipoPapel(item.TipoPapel);"></span>
+                                                <span>@ObterNomeTipoPapel(item.TipoPapel)</span>
+                                                <strong>@pct</strong>
+                                                <span class="legend-val">@FormatarMoeda(item.Valor)</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            break;
+
+                        case "dividendos-recebidos":
+                            <div class="section-title">
+                                <div>
+                                    <h2>Dividendos recebidos</h2>
+                                    <p>Histórico dos últimos 12 meses (Coluna por mês)</p>
+                                </div>
+                                @if (_dashboard.DividendosPorMes.Count > 0)
+                                {
+                                    var total12M = _dashboard.DividendosPorMes.Sum(d => d.Total);
+                                    var media12M = total12M / 12m;
+                                    <div style="text-align: right; font-size: 11px;">
+                                        <span style="color: var(--muted);">Total 12M: </span><strong class="positive">@FormatarMoeda(total12M)</strong>
+                                        <span style="color: var(--muted); margin-left: 8px;">Média: </span><strong>@FormatarMoeda(media12M)/mês</strong>
+                                    </div>
+                                }
                             </div>
-                            <div class="chart-toggle">
-                                <button type="button" class="@(_modoCapitalAcumulado ? "active" : "")" @onclick="() => _modoCapitalAcumulado = true">
-                                    Capital Acumulado
-                                </button>
-                                <button type="button" class="@(!_modoCapitalAcumulado ? "active" : "")" @onclick="() => _modoCapitalAcumulado = false">
-                                    Aportes no Mês
-                                </button>
+
+                            var maxDiv = _dashboard.DividendosPorMes.Count > 0 ? _dashboard.DividendosPorMes.Max(d => d.Total) : 0;
+                            if (maxDiv <= 0) maxDiv = 1;
+
+                            <div class="chart-with-grid">
+                                <div class="chart-y-axis">
+                                    <div class="grid-line"><span>@FormatarMoedaAbrev(maxDiv)</span></div>
+                                    <div class="grid-line"><span>@FormatarMoedaAbrev(maxDiv / 2)</span></div>
+                                    <div class="grid-line"><span>R$ 0</span></div>
+                                </div>
+                                <div class="bars-stage">
+                                    @foreach (var mes in _dashboard.DividendosPorMes)
+                                    {
+                                        var ehMesAtual = mes.Ano == hoje.Year && mes.Mes == hoje.Month;
+                                        var altura = (double)(mes.Total / maxDiv) * 100;
+                                        var tooltip = $"{mes.Mes:00}/{mes.Ano}: {FormatarMoeda(mes.Total)}";
+
+                                        <div class="bar-col @(ehMesAtual ? "is-current" : "")" title="@tooltip">
+                                            <div class="stack-wrap">
+                                                @if (mes.Total > 0)
+                                                {
+                                                    <div class="stack @(ehMesAtual ? "is-current" : "")"
+                                                         style="height: @FormatarAlturaCss(altura); background: linear-gradient(180deg, var(--primary-mid) 0%, var(--primary) 100%);">
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <div style="width: 14px; height: 3px; background: var(--line); border-radius: 2px;"></div>
+                                                }
+                                            </div>
+                                            <span>@($"{mes.Mes:00}/{mes.Ano.ToString()[2..]}")</span>
+                                        </div>
+                                    }
+                                </div>
                             </div>
-                        </div>
+                            break;
+
+                        case "aumento-capital":
+                            <div class="section-title">
+                                <div>
+                                    <h2>Aumento de capital investido</h2>
+                                    <p>Evolução nos últimos 12 meses (Coluna)</p>
+                                </div>
+                                <div class="chart-toggle">
+                                    <button type="button" class="@(_modoCapitalAcumulado ? "active" : "")" @onclick="() => _modoCapitalAcumulado = true">
+                                        Capital Acumulado
+                                    </button>
+                                    <button type="button" class="@(!_modoCapitalAcumulado ? "active" : "")" @onclick="() => _modoCapitalAcumulado = false">
+                                        Aportes no Mês
+                                    </button>
+                                </div>
+                            </div>
 
                         var serie12Meses = ObterSerieEvolucao12Meses(_dashboard.DividendosPorMes, _dashboard.EvolucaoCapital);
                         var maxCap = _modoCapitalAcumulado
@@ -344,179 +426,229 @@ else
                         </div>
                         break;
 
-                    case "dividendos-por-tipo":
-                        <div class="section-title">
-                            <div>
-                                <h2>@if (_editandoLayout) { <span class="drag-handle">⠿ Arrastar</span> }Dividendos por tipo</h2>
-                                <p>Demonstrativo completo somado por tipo por mês</p>
+                        case "dividendos-por-tipo":
+                            <div class="section-title">
+                                <div>
+                                    <h2>Dividendos por tipo</h2>
+                                    <p>Demonstrativo completo somado por tipo por mês</p>
+                                </div>
+                                @if (_dashboard.DividendosPorMesETipo.Count > 0)
+                                {
+                                    var totalGeral = _dashboard.DividendosPorMesETipo.Sum(d => d.Total);
+                                    <div style="font-size: 11px;">
+                                        <span style="color: var(--muted);">Total histórico: </span>
+                                        <strong class="positive">@FormatarMoeda(totalGeral)</strong>
+                                    </div>
+                                }
                             </div>
-                            @if (_dashboard.DividendosPorMesETipo.Count > 0)
+
+                            @if (_dashboard.DividendosPorMesETipo.Count == 0)
                             {
-                                var totalGeral = _dashboard.DividendosPorMesETipo.Sum(d => d.Total);
-                                <div style="font-size: 11px;">
-                                    <span style="color: var(--muted);">Total histórico: </span>
-                                    <strong class="positive">@FormatarMoeda(totalGeral)</strong>
+                                <div style="padding: 30px; text-align: center; color: var(--muted);">
+                                    Nenhum provento registrado.
                                 </div>
                             }
-                        </div>
-
-                        @if (_dashboard.DividendosPorMesETipo.Count == 0)
-                        {
-                            <div style="padding: 30px; text-align: center; color: var(--muted);">
-                                Nenhum provento registrado.
-                            </div>
-                        }
-                        else
-                        {
-                            var listaOrdenada = ObterDividendosPorTipoOrdenados().ToList();
-                            var totalRegistrosDiv = listaOrdenada.Count;
-                            var totalPaginasDiv = Math.Max(1, (int)Math.Ceiling((double)totalRegistrosDiv / _tamanhoPaginaDivTipo));
-                            if (_paginaDivTipo > totalPaginasDiv) _paginaDivTipo = totalPaginasDiv;
-
-                            var inicioDiv = ((_paginaDivTipo - 1) * _tamanhoPaginaDivTipo) + 1;
-                            var fimDiv = Math.Min(_paginaDivTipo * _tamanhoPaginaDivTipo, totalRegistrosDiv);
-                            var itensPaginaDiv = listaOrdenada.Skip((_paginaDivTipo - 1) * _tamanhoPaginaDivTipo).Take(_tamanhoPaginaDivTipo).ToList();
-
-                            var totalAcoes = listaOrdenada.Sum(d => d.Acoes);
-                            var totalFiis = listaOrdenada.Sum(d => d.Fiis);
-                            var totalBdrs = listaOrdenada.Sum(d => d.Bdrs);
-                            var totalEtfs = listaOrdenada.Sum(d => d.Etfs);
-                            var totalTudo = listaOrdenada.Sum(d => d.Total);
-
-                            <div class="table-shell" style="border: 0; box-shadow: none;">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th class="alinhar-centro" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("MesAno")'>
-                                                Mês/Ano @IndicadorOrdenacaoDivTipo("MesAno")
-                                            </th>
-                                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Acoes")'>
-                                                Ações @IndicadorOrdenacaoDivTipo("Acoes")
-                                            </th>
-                                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Fiis")'>
-                                                FIIs @IndicadorOrdenacaoDivTipo("Fiis")
-                                            </th>
-                                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Bdrs")'>
-                                                BDRs @IndicadorOrdenacaoDivTipo("Bdrs")
-                                            </th>
-                                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Etfs")'>
-                                                ETFs @IndicadorOrdenacaoDivTipo("Etfs")
-                                            </th>
-                                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Total")'>
-                                                Total @IndicadorOrdenacaoDivTipo("Total")
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var item in itensPaginaDiv)
-                                        {
-                                            <tr>
-                                                <td class="alinhar-centro font-bold">@($"{item.Mes:00}/{item.Ano}")</td>
-                                                <td class="alinhar-direita">@(item.Acoes > 0 ? FormatarMoeda(item.Acoes) : "–")</td>
-                                                <td class="alinhar-direita">@(item.Fiis > 0 ? FormatarMoeda(item.Fiis) : "–")</td>
-                                                <td class="alinhar-direita">@(item.Bdrs > 0 ? FormatarMoeda(item.Bdrs) : "–")</td>
-                                                <td class="alinhar-direita">@(item.Etfs > 0 ? FormatarMoeda(item.Etfs) : "–")</td>
-                                                <td class="alinhar-direita positive font-bold">@FormatarMoeda(item.Total)</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                    <tfoot>
-                                        <tr>
-                                            <td class="alinhar-centro font-bold">Total Geral</td>
-                                            <td class="alinhar-direita">@FormatarMoeda(totalAcoes)</td>
-                                            <td class="alinhar-direita">@FormatarMoeda(totalFiis)</td>
-                                            <td class="alinhar-direita">@FormatarMoeda(totalBdrs)</td>
-                                            <td class="alinhar-direita">@FormatarMoeda(totalEtfs)</td>
-                                            <td class="alinhar-direita positive font-bold">@FormatarMoeda(totalTudo)</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                                <div class="table-footer">
-                                    <span>Mostrando @inicioDiv–@fimDiv de @totalRegistrosDiv competências</span>
-                                    <PaginacaoGrid PaginaAtual="_paginaDivTipo" TotalPaginas="totalPaginasDiv" @bind-TamanhoPagina="_tamanhoPaginaDivTipo" OnPaginaMudou="p => _paginaDivTipo = p" />
-                                </div>
-                            </div>
-                        }
-                        break;
-
-                    case "top10-papeis":
-                        <div class="section-title">
-                            <div>
-                                <h2>@if (_editandoLayout) { <span class="drag-handle">⠿ Arrastar</span> }Top 10 papéis com maior total atual</h2>
-                                <p>Maiores posições ativas da carteira por valor total de mercado</p>
-                            </div>
-                            @if (_topPapeis.Count > 0)
+                            else
                             {
-                                <div style="font-size: 11px;">
-                                    <span style="color: var(--muted);">Total Top 10: </span>
-                                    <strong>@FormatarMoeda(_topPapeis.Sum(p => p.ValorTotalAtual))</strong>
+                                var listaOrdenada = ObterDividendosPorTipoOrdenados().ToList();
+                                var totalRegistrosDiv = listaOrdenada.Count;
+                                var totalPaginasDiv = Math.Max(1, (int)Math.Ceiling((double)totalRegistrosDiv / _tamanhoPaginaDivTipo));
+                                if (_paginaDivTipo > totalPaginasDiv) _paginaDivTipo = totalPaginasDiv;
+
+                                var inicioDiv = ((_paginaDivTipo - 1) * _tamanhoPaginaDivTipo) + 1;
+                                var fimDiv = Math.Min(_paginaDivTipo * _tamanhoPaginaDivTipo, totalRegistrosDiv);
+                                var itensPaginaDiv = listaOrdenada.Skip((_paginaDivTipo - 1) * _tamanhoPaginaDivTipo).Take(_tamanhoPaginaDivTipo).ToList();
+
+                                var totalAcoes = listaOrdenada.Sum(d => d.Acoes);
+                                var totalFiis = listaOrdenada.Sum(d => d.Fiis);
+                                var totalBdrs = listaOrdenada.Sum(d => d.Bdrs);
+                                var totalEtfs = listaOrdenada.Sum(d => d.Etfs);
+                                var totalTudo = listaOrdenada.Sum(d => d.Total);
+
+                                <div class="table-shell" style="border: 0; box-shadow: none;">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th class="alinhar-centro" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("MesAno")'>
+                                                    Mês/Ano @IndicadorOrdenacaoDivTipo("MesAno")
+                                                </th>
+                                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Acoes")'>
+                                                    Ações @IndicadorOrdenacaoDivTipo("Acoes")
+                                                </th>
+                                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Fiis")'>
+                                                    FIIs @IndicadorOrdenacaoDivTipo("Fiis")
+                                                </th>
+                                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Bdrs")'>
+                                                    BDRs @IndicadorOrdenacaoDivTipo("Bdrs")
+                                                </th>
+                                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Etfs")'>
+                                                    ETFs @IndicadorOrdenacaoDivTipo("Etfs")
+                                                </th>
+                                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarDivTipoPor("Total")'>
+                                                    Total @IndicadorOrdenacaoDivTipo("Total")
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in itensPaginaDiv)
+                                            {
+                                                <tr>
+                                                    <td class="alinhar-centro font-bold">@($"{item.Mes:00}/{item.Ano}")</td>
+                                                    <td class="alinhar-direita">@(item.Acoes > 0 ? FormatarMoeda(item.Acoes) : "–")</td>
+                                                    <td class="alinhar-direita">@(item.Fiis > 0 ? FormatarMoeda(item.Fiis) : "–")</td>
+                                                    <td class="alinhar-direita">@(item.Bdrs > 0 ? FormatarMoeda(item.Bdrs) : "–")</td>
+                                                    <td class="alinhar-direita">@(item.Etfs > 0 ? FormatarMoeda(item.Etfs) : "–")</td>
+                                                    <td class="alinhar-direita positive font-bold">@FormatarMoeda(item.Total)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <td class="alinhar-centro font-bold">Total Geral</td>
+                                                <td class="alinhar-direita">@FormatarMoeda(totalAcoes)</td>
+                                                <td class="alinhar-direita">@FormatarMoeda(totalFiis)</td>
+                                                <td class="alinhar-direita">@FormatarMoeda(totalBdrs)</td>
+                                                <td class="alinhar-direita">@FormatarMoeda(totalEtfs)</td>
+                                                <td class="alinhar-direita positive font-bold">@FormatarMoeda(totalTudo)</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                    <div class="table-footer">
+                                        <span>Mostrando @inicioDiv–@fimDiv de @totalRegistrosDiv competências</span>
+                                        <PaginacaoGrid PaginaAtual="_paginaDivTipo" TotalPaginas="totalPaginasDiv" @bind-TamanhoPagina="_tamanhoPaginaDivTipo" OnPaginaMudou="p => _paginaDivTipo = p" />
+                                    </div>
                                 </div>
                             }
-                        </div>
+                            break;
 
-                        @if (_topPapeis.Count == 0)
-                        {
-                            <div style="padding: 30px; text-align: center; color: var(--muted);">
-                                Nenhum papel ativo em carteira.
-                            </div>
-                        }
-                        else
-                        {
-                            var topOrdenados = ObterTopPapeisOrdenados().ToList();
-                            var totalTop = topOrdenados.Count;
-                            var totalPaginasTop = Math.Max(1, (int)Math.Ceiling((double)totalTop / TamanhoPaginaPadrao));
-                            if (_paginaTopPapeis > totalPaginasTop) _paginaTopPapeis = totalPaginasTop;
-
-                            var inicioTop = ((_paginaTopPapeis - 1) * TamanhoPaginaPadrao) + 1;
-                            var fimTop = Math.Min(_paginaTopPapeis * TamanhoPaginaPadrao, totalTop);
-                            var itensTopPagina = topOrdenados.Skip((_paginaTopPapeis - 1) * TamanhoPaginaPadrao).Take(TamanhoPaginaPadrao).ToList();
-
-                            <div class="table-shell" style="border: 0; box-shadow: none;">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("Codigo")'>
-                                                Código @IndicadorOrdenacaoTopPapeis("Codigo")
-                                            </th>
-                                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("ValorTotalAtual")'>
-                                                Valor total atual @IndicadorOrdenacaoTopPapeis("ValorTotalAtual")
-                                            </th>
-                                            <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("DividendosTotal")'>
-                                                Dividendos total @IndicadorOrdenacaoTopPapeis("DividendosTotal")
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var item in itensTopPagina)
-                                        {
-                                            <tr>
-                                                <td>
-                                                    <a class="paper-link" href="/papeis/@item.PapelId">@item.Codigo</a>
-                                                </td>
-                                                <td class="alinhar-direita font-bold">@FormatarMoeda(item.ValorTotalAtual)</td>
-                                                <td class="alinhar-direita positive font-bold">@FormatarMoeda(item.DividendosTotal)</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                    <tfoot>
-                                        <tr>
-                                            <td class="alinhar-esquerda font-bold">Total Top 10</td>
-                                            <td class="alinhar-direita font-bold">@FormatarMoeda(topOrdenados.Sum(p => p.ValorTotalAtual))</td>
-                                            <td class="alinhar-direita positive font-bold">@FormatarMoeda(topOrdenados.Sum(p => p.DividendosTotal))</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                                <div class="table-footer">
-                                    <span>Mostrando @inicioTop–@fimTop de @totalTop papéis</span>
-                                    <PaginacaoGrid PaginaAtual="_paginaTopPapeis" TotalPaginas="totalPaginasTop" MostrarSeletorTamanho="false" OnPaginaMudou="p => _paginaTopPapeis = p" />
+                        case "top10-papeis":
+                            <div class="section-title">
+                                <div>
+                                    <h2>Top 10 papéis com maior total atual</h2>
+                                    <p>Maiores posições ativas da carteira por valor total de mercado</p>
                                 </div>
+                                @if (_topPapeis.Count > 0)
+                                {
+                                    <div style="font-size: 11px;">
+                                        <span style="color: var(--muted);">Total Top 10: </span>
+                                        <strong>@FormatarMoeda(_topPapeis.Sum(p => p.ValorTotalAtual))</strong>
+                                    </div>
+                                }
                             </div>
-                        }
-                        break;
-                }
-            </section>
-        }
-    </div>
+
+                            @if (_topPapeis.Count == 0)
+                            {
+                                <div style="padding: 30px; text-align: center; color: var(--muted);">
+                                    Nenhum papel ativo em carteira.
+                                </div>
+                            }
+                            else
+                            {
+                                var topOrdenados = ObterTopPapeisOrdenados().ToList();
+                                var totalTop = topOrdenados.Count;
+                                var totalPaginasTop = Math.Max(1, (int)Math.Ceiling((double)totalTop / TamanhoPaginaPadrao));
+                                if (_paginaTopPapeis > totalPaginasTop) _paginaTopPapeis = totalPaginasTop;
+
+                                var inicioTop = ((_paginaTopPapeis - 1) * TamanhoPaginaPadrao) + 1;
+                                var fimTop = Math.Min(_paginaTopPapeis * TamanhoPaginaPadrao, totalTop);
+                                var itensTopPagina = topOrdenados.Skip((_paginaTopPapeis - 1) * TamanhoPaginaPadrao).Take(TamanhoPaginaPadrao).ToList();
+
+                                <div class="table-shell" style="border: 0; box-shadow: none;">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("Codigo")'>
+                                                    Código @IndicadorOrdenacaoTopPapeis("Codigo")
+                                                </th>
+                                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("ValorTotalAtual")'>
+                                                    Valor total atual @IndicadorOrdenacaoTopPapeis("ValorTotalAtual")
+                                                </th>
+                                                <th class="alinhar-direita" style="cursor: pointer;" @onclick='() => OrdenarTopPapeisPor("DividendosTotal")'>
+                                                    Dividendos total @IndicadorOrdenacaoTopPapeis("DividendosTotal")
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in itensTopPagina)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <a class="paper-link" href="/papeis/@item.PapelId">@item.Codigo</a>
+                                                    </td>
+                                                    <td class="alinhar-direita font-bold">@FormatarMoeda(item.ValorTotalAtual)</td>
+                                                    <td class="alinhar-direita positive font-bold">@FormatarMoeda(item.DividendosTotal)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <td class="alinhar-esquerda font-bold">Total Top 10</td>
+                                                <td class="alinhar-direita font-bold">@FormatarMoeda(topOrdenados.Sum(p => p.ValorTotalAtual))</td>
+                                                <td class="alinhar-direita positive font-bold">@FormatarMoeda(topOrdenados.Sum(p => p.DividendosTotal))</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                    <div class="table-footer">
+                                        <span>Mostrando @inicioTop–@fimTop de @totalTop papéis</span>
+                                        <PaginacaoGrid PaginaAtual="_paginaTopPapeis" TotalPaginas="totalPaginasTop" MostrarSeletorTamanho="false" OnPaginaMudou="p => _paginaTopPapeis = p" />
+                                    </div>
+                                </div>
+                            }
+                            break;
+                    }
+                </section>
+            }
+        </div>
+    }
+
+    @if (_editandoLayout)
+    {
+        var itensOcultos = ObterItensOcultos();
+        <section class="dashboard-hidden-tray @(_sobreBandejaOcultos ? "drag-over" : "")"
+                 @ondragover:preventDefault="true"
+                 @ondragenter="AoEntrarBandejaOcultos"
+                 @ondragleave="() => _sobreBandejaOcultos = false"
+                 @ondrop="SoltarNaBandejaOcultos">
+            <div class="dashboard-hidden-tray-header">
+                <div>
+                    <h3>KPIs, Gráficos e Grids fora do Dashboard (@itensOcultos.Count)</h3>
+                    <p>Arraste um card do Dashboard para cá (ou clique em ✕) para ocultá-lo. Para reinserir, arraste de volta ou clique em <strong>+ Exibir no Dash</strong>.</p>
+                </div>
+            </div>
+
+            @if (itensOcultos.Count == 0)
+            {
+                <div style="padding: 14px; text-align: center; color: var(--muted); font-size: 12px;">
+                    Todos os KPIs, gráficos e grids estão visíveis no Dashboard. Arraste qualquer bloco para esta barra para retirá-lo da visão.
+                </div>
+            }
+            else
+            {
+                <div class="dashboard-hidden-list">
+                    @foreach (var oculto in itensOcultos)
+                    {
+                        var item = oculto;
+                        <div @key="item.Id"
+                             class="dashboard-hidden-item"
+                             draggable="true"
+                             @ondragstart="() => IniciarArrasteItemOculto(item.Id, item.EhKpi)"
+                             @ondragend="FinalizarArraste">
+                            <div class="dashboard-hidden-item-info">
+                                <span class="dashboard-hidden-item-badge">@item.Categoria</span>
+                                <span class="dashboard-hidden-item-title">@item.Titulo</span>
+                                <span class="dashboard-hidden-item-desc">@item.Descricao</span>
+                            </div>
+                            <button type="button"
+                                    class="dash-btn-restore-item"
+                                    @onclick="() => RestaurarItemOculto(item.Id, item.EhKpi)">
+                                + Exibir no Dash
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    }
 
     <!-- Quick actions -->
     <div class="quick-actions">
@@ -536,6 +668,42 @@ else
     private static readonly string[] CardsPadrao =
         ["alocacao-tipo", "dividendos-recebidos", "aumento-capital", "dividendos-por-tipo", "top10-papeis"];
 
+    private static readonly (int Colunas, string Rotulo)[] OpcoesLargura =
+    [
+        (2, "1/5 (20%)"),
+        (3, "1/4 (25%)"),
+        (4, "1/3 (33%)"),
+        (6, "1/2 (50%)"),
+        (8, "2/3 (67%)"),
+        (9, "3/4 (75%)"),
+        (12, "100%")
+    ];
+
+    private static readonly (string Codigo, string Rotulo)[] OpcoesAltura =
+    [
+        ("auto", "Auto"),
+        ("sm", "Compacta"),
+        ("md", "Média"),
+        ("lg", "Grande"),
+        ("xl", "Extra")
+    ];
+
+    private sealed record MetadadosBlocoDashboard(string Id, string Categoria, string Titulo, string Descricao, bool EhKpi);
+
+    private static readonly IReadOnlyList<MetadadosBlocoDashboard> CatalogoBlocos =
+    [
+        new("patrimonio-total", "KPI", "Patrimônio total (Mês atual)", "Posição consolidada da carteira", true),
+        new("total-atual", "KPI", "Total atual (Carteira)", "Valor a mercado das posições", true),
+        new("total-investido", "KPI", "Total investido (Carteira)", "Custo das posições em aberto", true),
+        new("ganho-perda", "KPI", "Ganho / Perda da carteira", "Resultado financeiro e % sobre o custo", true),
+        new("dividendos-mes", "KPI", "Dividendos no mês", "Proventos do mês e total histórico", true),
+        new("alocacao-tipo", "Gráfico", "Alocação por tipo", "Distribuição do patrimônio em carteira (Pizza)", false),
+        new("dividendos-recebidos", "Gráfico", "Dividendos recebidos", "Histórico dos últimos 12 meses (Coluna)", false),
+        new("aumento-capital", "Gráfico", "Aumento de capital investido", "Evolução nos últimos 12 meses (Coluna)", false),
+        new("dividendos-por-tipo", "Grid", "Dividendos por tipo", "Demonstrativo completo somado por tipo por mês", false),
+        new("top10-papeis", "Grid", "Top 10 papéis com maior total atual", "Maiores posições ativas da carteira", false)
+    ];
+
     private DashboardResponse? _dashboard;
     private IReadOnlyList<TopPapelDashboard> _topPapeis = [];
     private string? _mensagemErro;
@@ -545,6 +713,7 @@ else
 
     private List<string> _ordemKpis = [.. KpisPadrao];
     private List<string> _ordemCards = [.. CardsPadrao];
+    private Dictionary<string, DashboardItemDimensaoDto> _dimensoes = CriarDimensoesPadrao();
     private DashboardLayoutDto? _layoutAntesEdicao;
     private bool _editandoLayout;
     private bool _salvandoLayout;
@@ -552,6 +721,9 @@ else
     private string? _kpiSobreAlvo;
     private string? _cardArrastando;
     private string? _cardSobreAlvo;
+    private bool _sobreBandejaOcultos;
+    private bool _sobreAreaKpisVazia;
+    private bool _sobreAreaCardsVazia;
 
     private string _colunaDivTipo = "MesAno";
     private bool _ascDivTipo = false;
@@ -626,19 +798,48 @@ else
         }
     }
 
+    private static Dictionary<string, DashboardItemDimensaoDto> CriarDimensoesPadrao() =>
+        new(StringComparer.Ordinal)
+        {
+            ["patrimonio-total"] = new(2, "auto"),
+            ["total-atual"] = new(2, "auto"),
+            ["total-investido"] = new(2, "auto"),
+            ["ganho-perda"] = new(2, "auto"),
+            ["dividendos-mes"] = new(2, "auto"),
+            ["alocacao-tipo"] = new(6, "auto"),
+            ["dividendos-recebidos"] = new(6, "auto"),
+            ["aumento-capital"] = new(6, "auto"),
+            ["dividendos-por-tipo"] = new(6, "auto"),
+            ["top10-papeis"] = new(12, "auto")
+        };
+
     private async Task CarregarLayoutSalvoAsync()
     {
         try
         {
             var layout = await ApiClient.ObterDashboardLayoutAsync();
-            if (EhOrdemValida(layout.Kpis, KpisPadrao))
+            if (EhSubconjuntoValido(layout.Kpis, KpisPadrao))
             {
                 _ordemKpis = layout.Kpis.ToList();
             }
-            if (EhOrdemValida(layout.Cards, CardsPadrao))
+            if (EhSubconjuntoValido(layout.Cards, CardsPadrao))
             {
                 _ordemCards = layout.Cards.ToList();
             }
+            var dimensoes = CriarDimensoesPadrao();
+            if (layout.Dimensoes is not null)
+            {
+                foreach (var (id, dim) in layout.Dimensoes)
+                {
+                    if (dimensoes.ContainsKey(id) && dim is not null)
+                    {
+                        var col = OpcoesLargura.Any(o => o.Colunas == dim.Colunas) ? dim.Colunas : dimensoes[id].Colunas;
+                        var alt = OpcoesAltura.Any(a => a.Codigo == dim.Altura) ? dim.Altura : "auto";
+                        dimensoes[id] = new DashboardItemDimensaoDto(col, alt);
+                    }
+                }
+            }
+            _dimensoes = dimensoes;
         }
         catch
         {
@@ -646,16 +847,20 @@ else
         }
     }
 
-    private static bool EhOrdemValida(IReadOnlyList<string>? ordem, string[] padrao) =>
+    private static bool EhSubconjuntoValido(IReadOnlyList<string>? ordem, string[] permitidos) =>
         ordem is not null
-        && ordem.Count == padrao.Length
-        && ordem.OrderBy(x => x, StringComparer.Ordinal).SequenceEqual(padrao.OrderBy(x => x, StringComparer.Ordinal));
+        && ordem.Count <= permitidos.Length
+        && ordem.Distinct(StringComparer.Ordinal).Count() == ordem.Count
+        && ordem.All(id => permitidos.Contains(id, StringComparer.Ordinal));
 
     private void IniciarEdicaoLayout()
     {
         _mensagemErro = null;
         _mensagemSucesso = null;
-        _layoutAntesEdicao = new DashboardLayoutDto(_ordemKpis.ToList(), _ordemCards.ToList());
+        _layoutAntesEdicao = new DashboardLayoutDto(
+            _ordemKpis.ToList(),
+            _ordemCards.ToList(),
+            new Dictionary<string, DashboardItemDimensaoDto>(_dimensoes, StringComparer.Ordinal));
         _editandoLayout = true;
     }
 
@@ -665,6 +870,9 @@ else
         {
             _ordemKpis = _layoutAntesEdicao.Kpis.ToList();
             _ordemCards = _layoutAntesEdicao.Cards.ToList();
+            _dimensoes = _layoutAntesEdicao.Dimensoes is not null
+                ? new Dictionary<string, DashboardItemDimensaoDto>(_layoutAntesEdicao.Dimensoes, StringComparer.Ordinal)
+                : CriarDimensoesPadrao();
         }
         _editandoLayout = false;
         FinalizarArraste();
@@ -674,6 +882,7 @@ else
     {
         _ordemKpis = [.. KpisPadrao];
         _ordemCards = [.. CardsPadrao];
+        _dimensoes = CriarDimensoesPadrao();
     }
 
     private async Task SalvarLayoutAsync()
@@ -684,7 +893,10 @@ else
         try
         {
             await ApiClient.SalvarDashboardLayoutAsync(
-                new DashboardLayoutDto(_ordemKpis.ToList(), _ordemCards.ToList()));
+                new DashboardLayoutDto(
+                    _ordemKpis.ToList(),
+                    _ordemCards.ToList(),
+                    new Dictionary<string, DashboardItemDimensaoDto>(_dimensoes, StringComparer.Ordinal)));
             _editandoLayout = false;
             _layoutAntesEdicao = null;
             _mensagemSucesso = "Layout do dashboard salvo no MongoDB.";
@@ -704,11 +916,98 @@ else
         }
     }
 
+    private int ObterColunas(string id) =>
+        _dimensoes.TryGetValue(id, out var d) ? d.Colunas : (KpisPadrao.Contains(id) ? 2 : 6);
+
+    private string ObterAltura(string id) =>
+        _dimensoes.TryGetValue(id, out var d) ? d.Altura : "auto";
+
+    private bool PodeDiminuirLargura(string id)
+    {
+        var atual = ObterColunas(id);
+        return OpcoesLargura.Any(o => o.Colunas < atual);
+    }
+
+    private bool PodeAumentarLargura(string id)
+    {
+        var atual = ObterColunas(id);
+        return OpcoesLargura.Any(o => o.Colunas > atual);
+    }
+
+    private void AlterarLargura(string id, int direcao)
+    {
+        var atual = ObterColunas(id);
+        var idx = Array.FindIndex(OpcoesLargura, o => o.Colunas == atual);
+        if (idx < 0) idx = 0;
+        var novoIdx = Math.Clamp(idx + direcao, 0, OpcoesLargura.Length - 1);
+        var novasColunas = OpcoesLargura[novoIdx].Colunas;
+        _dimensoes[id] = new DashboardItemDimensaoDto(novasColunas, ObterAltura(id));
+    }
+
+    private void DefinirLargura(string id, object? valor)
+    {
+        if (valor is not null && int.TryParse(valor.ToString(), out var col) && OpcoesLargura.Any(o => o.Colunas == col))
+        {
+            _dimensoes[id] = new DashboardItemDimensaoDto(col, ObterAltura(id));
+        }
+    }
+
+    private void DefinirAltura(string id, object? valor)
+    {
+        var alt = valor?.ToString() ?? "auto";
+        if (OpcoesAltura.Any(a => a.Codigo == alt))
+        {
+            _dimensoes[id] = new DashboardItemDimensaoDto(ObterColunas(id), alt);
+        }
+    }
+
+    private void OcultarKpi(string kpiId)
+    {
+        _ordemKpis.Remove(kpiId);
+    }
+
+    private void OcultarCard(string cardId)
+    {
+        _ordemCards.Remove(cardId);
+    }
+
+    private void RestaurarItemOculto(string id, bool ehKpi)
+    {
+        if (ehKpi)
+        {
+            if (!_ordemKpis.Contains(id)) _ordemKpis.Add(id);
+        }
+        else
+        {
+            if (!_ordemCards.Contains(id)) _ordemCards.Add(id);
+        }
+    }
+
+    private IReadOnlyList<MetadadosBlocoDashboard> ObterItensOcultos() =>
+        CatalogoBlocos
+            .Where(b => b.EhKpi ? !_ordemKpis.Contains(b.Id) : !_ordemCards.Contains(b.Id))
+            .ToList();
+
     private void IniciarArrasteKpi(string kpiId)
     {
         if (!_editandoLayout) return;
         _kpiArrastando = kpiId;
         _cardArrastando = null;
+    }
+
+    private void IniciarArrasteItemOculto(string id, bool ehKpi)
+    {
+        if (!_editandoLayout) return;
+        if (ehKpi)
+        {
+            _kpiArrastando = id;
+            _cardArrastando = null;
+        }
+        else
+        {
+            _cardArrastando = id;
+            _kpiArrastando = null;
+        }
     }
 
     private void AoEntrarAlvoKpi(string kpiId)
@@ -723,7 +1022,16 @@ else
     {
         if (_editandoLayout && _kpiArrastando is not null && _kpiArrastando != destinoId)
         {
-            Reordenar(_ordemKpis, _kpiArrastando, destinoId);
+            ReordenarOuInserir(_ordemKpis, _kpiArrastando, destinoId);
+        }
+        FinalizarArraste();
+    }
+
+    private void SoltarEmAreaKpisVazia()
+    {
+        if (_editandoLayout && _kpiArrastando is not null && !_ordemKpis.Contains(_kpiArrastando))
+        {
+            _ordemKpis.Add(_kpiArrastando);
         }
         FinalizarArraste();
     }
@@ -747,7 +1055,42 @@ else
     {
         if (_editandoLayout && _cardArrastando is not null && _cardArrastando != destinoId)
         {
-            Reordenar(_ordemCards, _cardArrastando, destinoId);
+            ReordenarOuInserir(_ordemCards, _cardArrastando, destinoId);
+        }
+        FinalizarArraste();
+    }
+
+    private void SoltarEmAreaCardsVazia()
+    {
+        if (_editandoLayout && _cardArrastando is not null && !_ordemCards.Contains(_cardArrastando))
+        {
+            _ordemCards.Add(_cardArrastando);
+        }
+        FinalizarArraste();
+    }
+
+    private void AoEntrarBandejaOcultos()
+    {
+        if (!_editandoLayout) return;
+        if ((_kpiArrastando is not null && _ordemKpis.Contains(_kpiArrastando))
+            || (_cardArrastando is not null && _ordemCards.Contains(_cardArrastando)))
+        {
+            _sobreBandejaOcultos = true;
+        }
+    }
+
+    private void SoltarNaBandejaOcultos()
+    {
+        if (_editandoLayout)
+        {
+            if (_kpiArrastando is not null)
+            {
+                _ordemKpis.Remove(_kpiArrastando);
+            }
+            if (_cardArrastando is not null)
+            {
+                _ordemCards.Remove(_cardArrastando);
+            }
         }
         FinalizarArraste();
     }
@@ -758,22 +1101,33 @@ else
         _kpiSobreAlvo = null;
         _cardArrastando = null;
         _cardSobreAlvo = null;
+        _sobreBandejaOcultos = false;
+        _sobreAreaKpisVazia = false;
+        _sobreAreaCardsVazia = false;
     }
 
-    private static void Reordenar(List<string> lista, string origemId, string destinoId)
+    private static void ReordenarOuInserir(List<string> lista, string origemId, string destinoId)
     {
-        var indiceOrigem = lista.IndexOf(origemId);
         var indiceDestino = lista.IndexOf(destinoId);
-        if (indiceOrigem < 0 || indiceDestino < 0 || indiceOrigem == indiceDestino) return;
+        if (indiceDestino < 0) return;
 
-        lista.RemoveAt(indiceOrigem);
+        var indiceOrigem = lista.IndexOf(origemId);
+        if (indiceOrigem == indiceDestino) return;
+
+        if (indiceOrigem >= 0)
+        {
+            lista.RemoveAt(indiceOrigem);
+            indiceDestino = lista.IndexOf(destinoId);
+        }
+
         lista.Insert(indiceDestino, origemId);
     }
 
     private string ObterClasseKpi(string id)
     {
-        if (!_editandoLayout) return "card kpi";
-        var classes = "card kpi draggable-card";
+        var classes = $"card kpi dash-col-{ObterColunas(id)} dash-h-{ObterAltura(id)}";
+        if (!_editandoLayout) return classes;
+        classes += " draggable-card";
         if (_kpiArrastando == id) classes += " is-dragging";
         if (_kpiSobreAlvo == id) classes += " drag-over";
         return classes;
@@ -789,6 +1143,7 @@ else
             "dividendos-por-tipo" => "card upcoming",
             _ => "card"
         };
+        baseClass += $" dash-col-{ObterColunas(id)} dash-h-{ObterAltura(id)}";
         if (!_editandoLayout) return baseClass;
         if (_cardArrastando == id) baseClass += " is-dragging";
         if (_cardSobreAlvo == id) baseClass += " drag-over";

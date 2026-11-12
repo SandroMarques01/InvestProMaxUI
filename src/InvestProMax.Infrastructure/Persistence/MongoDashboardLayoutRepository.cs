@@ -25,9 +25,30 @@ public sealed class MongoDashboardLayoutRepository : IDashboardLayoutRepository
         var doc = await Colecao().Find(Filtro(usuarioId)).FirstOrDefaultAsync(ct);
         if (doc is null) return null;
 
-        return new DashboardLayoutDto(
-            doc["Kpis"].AsBsonArray.Select(v => v.AsString).ToList(),
-            doc["Cards"].AsBsonArray.Select(v => v.AsString).ToList());
+        var kpis = doc.Contains("Kpis") && doc["Kpis"].IsBsonArray
+            ? doc["Kpis"].AsBsonArray.Select(v => v.AsString).ToList()
+            : DashboardLayoutService.KpisPadrao.ToList();
+
+        var cards = doc.Contains("Cards") && doc["Cards"].IsBsonArray
+            ? doc["Cards"].AsBsonArray.Select(v => v.AsString).ToList()
+            : DashboardLayoutService.CardsPadrao.ToList();
+
+        var dimensoes = DashboardLayoutService.ObterDimensoesPadrao()
+            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+
+        if (doc.Contains("Dimensoes") && doc["Dimensoes"].IsBsonDocument)
+        {
+            foreach (var elem in doc["Dimensoes"].AsBsonDocument.Elements)
+            {
+                if (!elem.Value.IsBsonDocument) continue;
+                var sub = elem.Value.AsBsonDocument;
+                var colunas = sub.Contains("Colunas") ? sub["Colunas"].ToInt32() : 6;
+                var altura = sub.Contains("Altura") ? sub["Altura"].AsString : "auto";
+                dimensoes[elem.Name] = new DashboardItemDimensaoDto(colunas, altura);
+            }
+        }
+
+        return new DashboardLayoutDto(kpis, cards, dimensoes);
     }
 
     public async Task SalvarAsync(Guid usuarioId, DashboardLayoutDto layout, CancellationToken ct = default)
@@ -37,12 +58,26 @@ public sealed class MongoDashboardLayoutRepository : IDashboardLayoutRepository
             throw new RegraDeNegocioException("MongoDB não configurado: não é possível salvar o layout do Dashboard.");
         }
 
+        var dimensoesBson = new BsonDocument();
+        if (layout.Dimensoes is not null)
+        {
+            foreach (var (id, dim) in layout.Dimensoes)
+            {
+                dimensoesBson[id] = new BsonDocument
+                {
+                    { "Colunas", dim.Colunas },
+                    { "Altura", dim.Altura }
+                };
+            }
+        }
+
         var doc = new BsonDocument
         {
             { "_id", usuarioId.ToString() },
             { "UsuarioId", usuarioId.ToString() },
             { "Kpis", new BsonArray(layout.Kpis) },
             { "Cards", new BsonArray(layout.Cards) },
+            { "Dimensoes", dimensoesBson },
             { "AtualizadoEmUtc", DateTime.UtcNow }
         };
 
