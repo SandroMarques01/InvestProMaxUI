@@ -10,10 +10,23 @@ namespace InvestProMax.Api.Controllers;
 public class DashboardController : ControllerBase
 {
     private readonly IDashboardService _service;
+    private readonly IDashboardLayoutService _layoutService;
 
-    public DashboardController(IDashboardService service) => _service = service;
+    public DashboardController(IDashboardService service, IDashboardLayoutService layoutService)
+    {
+        _service = service;
+        _layoutService = layoutService;
+    }
 
     [HttpGet]
     public async Task<ActionResult<DashboardResponse>> Obter(CancellationToken ct) =>
         Ok(await _service.ObterAsync(ct));
+
+    [HttpGet("layout")]
+    public async Task<ActionResult<DashboardLayoutDto>> ObterLayout(CancellationToken ct) =>
+        Ok(await _layoutService.ObterAsync(ct));
+
+    [HttpPut("layout")]
+    public async Task<ActionResult<DashboardLayoutDto>> SalvarLayout(DashboardLayoutDto layout, CancellationToken ct) =>
+        Ok(await _layoutService.SalvarAsync(layout, ct));
 }

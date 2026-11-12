@@ -273,6 +273,12 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
     public Task<DashboardResponse> ObterDashboardAsync(CancellationToken ct = default) =>
         ObterAsync<DashboardResponse>("api/dashboard", ct);
 
+    public Task<DashboardLayoutDto> ObterDashboardLayoutAsync(CancellationToken ct = default) =>
+        ObterAsync<DashboardLayoutDto>("api/dashboard/layout", ct);
+
+    public Task<DashboardLayoutDto> SalvarDashboardLayoutAsync(DashboardLayoutDto layout, CancellationToken ct = default) =>
+        EnviarJsonAsync<DashboardLayoutDto>(HttpMethod.Put, "api/dashboard/layout", layout, ct);
+
     // ===== Infra interna =====
 
     private async Task<T> ObterAsync<T>(string url, CancellationToken ct)

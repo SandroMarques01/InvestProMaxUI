@@ -1,5 +1,8 @@
 namespace InvestProMax.SharedUI.Dtos;
 
+/// <summary>Ordem dos blocos do Dashboard (KPIs e gráficos/grids) salva por usuário no MongoDB.</summary>
+public sealed record DashboardLayoutDto(IReadOnlyList<string> Kpis, IReadOnlyList<string> Cards);
+
 public sealed record DividendoPorMes(int Ano, int Mes, decimal Total);
 
 public sealed record DividendoMensalPorTipo(

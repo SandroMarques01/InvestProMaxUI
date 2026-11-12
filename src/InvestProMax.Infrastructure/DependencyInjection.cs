@@ -126,6 +126,8 @@ public static class DependencyInjection
         }
 
         services.AddScoped<IMongoBackupService, MongoBackupService>();
+        services.AddScoped<InvestProMax.Application.Dashboard.IDashboardLayoutRepository>(sp =>
+            new MongoDashboardLayoutRepository(sp.GetService<MongoDB.Driver.IMongoDatabase>()));
 
         return services;
     }

@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IContaService, ContaService>();
         services.AddScoped<IFaturaService, FaturaService>();
         services.AddScoped<IFaturaGeracaoJobService, FaturaGeracaoJobService>();
+        services.AddScoped<IDashboardLayoutService, DashboardLayoutService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAtualizacaoCotacoesService, AtualizacaoCotacoesService>();
 

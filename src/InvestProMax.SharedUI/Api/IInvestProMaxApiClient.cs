@@ -94,4 +94,6 @@ public interface IInvestProMaxApiClient
 
     // Dashboard
     Task<DashboardResponse> ObterDashboardAsync(CancellationToken ct = default);
+    Task<DashboardLayoutDto> ObterDashboardLayoutAsync(CancellationToken ct = default);
+    Task<DashboardLayoutDto> SalvarDashboardLayoutAsync(DashboardLayoutDto layout, CancellationToken ct = default);
 }
