@@ -62,9 +62,9 @@ public class DashboardLayoutServiceTests
     {
         var dimensoes = new Dictionary<string, DashboardItemDimensaoDto>
         {
-            ["patrimonio-total"] = new(4, "md"),
-            ["alocacao-tipo"] = new(8, "lg"),
-            ["top10-papeis"] = new(12, "xl")
+            ["patrimonio-total"] = new(5, "md"),
+            ["alocacao-tipo"] = new(7, "lg"),
+            ["top10-papeis"] = new(10, "xl")
         };
         var layoutComOcultosEDimensoes = new DashboardLayoutDto(
             ["patrimonio-total", "total-atual"],
@@ -102,7 +102,7 @@ public class DashboardLayoutServiceTests
         var larguraInvalida = new DashboardLayoutDto(
             DashboardLayoutService.KpisPadrao,
             DashboardLayoutService.CardsPadrao,
-            new Dictionary<string, DashboardItemDimensaoDto> { ["alocacao-tipo"] = new(7, "auto") });
+            new Dictionary<string, DashboardItemDimensaoDto> { ["alocacao-tipo"] = new(11, "auto") });
 
         var alturaInvalida = new DashboardLayoutDto(
             DashboardLayoutService.KpisPadrao,

@@ -5,7 +5,7 @@ namespace InvestProMax.Application.Dashboard;
 
 /// <summary>
 /// Dimensão individual de um bloco do Dashboard (KPI, gráfico ou grid).
-/// Colunas: largura na grade de 12 colunas (2 = 20%/1-5, 3 = 25%/1-4, 4 = 33%/1-3, 6 = 50%/1-2, 8 = 67%/2-3, 9 = 75%/3-4, 12 = 100%).
+/// Colunas: largura (2 = 20%, 3 = 25%, 4 = 33%, 5 = 40%, 6 = 50%, 7 = 60%, 8 = 67%, 9 = 75%, 10 = 80%, 12 = 100%).
 /// Altura: "auto", "sm", "md", "lg" ou "xl".
 /// </summary>
 public sealed record DashboardItemDimensaoDto(int Colunas, string Altura);
@@ -43,7 +43,7 @@ public sealed class DashboardLayoutService : IDashboardLayoutService
     public static readonly IReadOnlyList<string> CardsPadrao =
         ["alocacao-tipo", "dividendos-recebidos", "aumento-capital", "dividendos-por-tipo", "top10-papeis"];
 
-    public static readonly IReadOnlyList<int> ColunasPermitidas = [2, 3, 4, 6, 8, 9, 12];
+    public static readonly IReadOnlyList<int> ColunasPermitidas = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12];
 
     public static readonly IReadOnlyList<string> AlturasPermitidas = ["auto", "sm", "md", "lg", "xl"];
 
