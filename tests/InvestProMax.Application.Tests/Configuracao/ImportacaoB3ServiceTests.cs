@@ -442,4 +442,26 @@ public class ImportacaoB3ServiceTests
         compra.Historico.Should().BeTrue();
         compra.Descricao.Should().Contain("[Desdobramento 16/04/2024]");
     }
+
+    [Fact]
+    public async Task ImportacaoB3_retorna_lista_de_transacoes_feitas_sem_duplicadas()
+    {
+        var linha1 = LinhaTransferencia(quantidade: 100, precoUnitario: 30m, valorOperacao: 3000m);
+        var linha2 = LinhaTransferencia(entradaSaida: "Debito", quantidade: 50, precoUnitario: 35m, valorOperacao: 1750m);
+        // linha1 repetida no mesmo arquivo (duplicada)
+        _reader.Setup(r => r.Ler(It.IsAny<Stream>())).Returns(new List<LinhaExtratoB3> { linha1, linha2, linha1 });
+        _papelRepository.Setup(r => r.ObterPorCodigoAsync(_usuarioId, "PETR4", default)).ReturnsAsync((Papel?)null);
+
+        var resposta = await _sut.ImportarAsync(new MemoryStream());
+
+        resposta.TransacoesCriadas.Should().Be(2);
+        resposta.LinhasIgnoradasDuplicadas.Should().Be(1);
+        resposta.Transacoes.Should().NotBeNull();
+        resposta.Transacoes.Should().HaveCount(2);
+        resposta.Transacoes![0].Codigo.Should().Be("PETR4");
+        resposta.Transacoes[0].TipoTransacao.Should().Be(TipoTransacao.Compra);
+        resposta.Transacoes[0].Quantidade.Should().Be(100m);
+        resposta.Transacoes[1].TipoTransacao.Should().Be(TipoTransacao.Venda);
+        resposta.Transacoes[1].Quantidade.Should().Be(50m);
+    }
 }

@@ -69,6 +69,8 @@ public sealed class ImportacaoB3Service : IImportacaoB3Service
         var novasTransacoes = new List<Transacao>();
         var novosDividendos = new List<Dividendo>();
         var novosMovimentosAluguel = new List<MovimentoAluguel>();
+        var transacoesImportadas = new List<TransacaoImportadaDto>();
+        var dividendosImportados = new List<DividendoImportadoDto>();
         var totalTransacoesImportadas = 0;
         var totalDividendosImportados = 0;
         var totalAlugueisImportados = 0;
@@ -329,7 +331,7 @@ public sealed class ImportacaoB3Service : IImportacaoB3Service
 
                 hashesTransacao.Add(hash);
                 papeisComTransacoes.Add(papel.Id);
-                novasTransacoes.Add(new Transacao
+                var transacao = new Transacao
                 {
                     PapelId = papel.Id,
                     TipoTransacao = tipoTransacao,
@@ -338,12 +340,25 @@ public sealed class ImportacaoB3Service : IImportacaoB3Service
                     Data = linha.Data,
                     Descricao = $"Importado da B3: {linha.Movimentacao}",
                     OrigemImportacaoHash = hash
-                });
+                };
+                novasTransacoes.Add(transacao);
+
+                transacoesImportadas.Add(new TransacaoImportadaDto(
+                    transacao.Id,
+                    papel.Id,
+                    papel.Codigo,
+                    papel.Nome,
+                    tipoTransacao,
+                    quantidade,
+                    valorUnitario,
+                    Math.Round(quantidade * valorUnitario, 2),
+                    linha.Data,
+                    transacao.Descricao));
             }
             else
             {
                 hashesDividendo.Add(hash);
-                novosDividendos.Add(new Dividendo
+                var dividendo = new Dividendo
                 {
                     PapelId = papel.Id,
                     TipoDividendo = classificacao.TipoDividendo!.Value,
@@ -352,7 +367,19 @@ public sealed class ImportacaoB3Service : IImportacaoB3Service
                     Data = linha.Data,
                     Descricao = $"Importado da B3: {linha.Movimentacao}",
                     OrigemImportacaoHash = hash
-                });
+                };
+                novosDividendos.Add(dividendo);
+
+                dividendosImportados.Add(new DividendoImportadoDto(
+                    dividendo.Id,
+                    papel.Id,
+                    papel.Codigo,
+                    papel.Nome,
+                    dividendo.TipoDividendo,
+                    linha.Quantidade,
+                    linha.ValorOperacao,
+                    linha.Data,
+                    dividendo.Descricao));
             }
         }
 
@@ -378,7 +405,7 @@ public sealed class ImportacaoB3Service : IImportacaoB3Service
 
         return new ImportarB3Response(
             papeisCriados, totalTransacoesImportadas, totalDividendosImportados, duplicadas, naoReconhecidas,
-            totalAlugueisImportados);
+            totalAlugueisImportados, transacoesImportadas, dividendosImportados);
 
         async Task PersistirLotesPendentesAsync()
         {

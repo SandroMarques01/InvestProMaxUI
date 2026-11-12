@@ -178,6 +178,229 @@
                 </span>
             </div>
         </section>
+
+        <!-- Grid de transações importadas da B3 -->
+        <section class="card" style="margin-top: 18px;">
+            <div class="section-title" style="flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <h2>Transações importadas da B3</h2>
+                    <p>Visualização das operações processadas e registradas nesta importação (duplicadas ignoradas)</p>
+                </div>
+                @if (_ultimoResultadoB3.Dividendos is { Count: > 0 })
+                {
+                    <div style="display: flex; gap: 6px;">
+                        <button type="button" class="btn @(_gridB3Aba == "transacoes" ? "btn-primary" : "btn-secondary")"
+                                style="font-size: 11px; padding: 5px 10px;"
+                                @onclick='() => SelecionarGridB3Aba("transacoes")'>
+                            <Icon Name="transaction" Size="14" />
+                            <span>Transações (@(_ultimoResultadoB3.Transacoes?.Count ?? 0))</span>
+                        </button>
+                        <button type="button" class="btn @(_gridB3Aba == "dividendos" ? "btn-primary" : "btn-secondary")"
+                                style="font-size: 11px; padding: 5px 10px;"
+                                @onclick='() => SelecionarGridB3Aba("dividendos")'>
+                            <Icon Name="dividend" Size="14" />
+                            <span>Proventos (@_ultimoResultadoB3.Dividendos.Count)</span>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <!-- Filtros do grid -->
+            <div class="filter-bar" style="margin-top: 12px; margin-bottom: 14px; gap: 12px; flex-wrap: wrap;">
+                @if (_gridB3Aba == "transacoes")
+                {
+                    <label class="field" style="width: 140px;">
+                        <span>Tipo de operação</span>
+                        <select @bind="_gridB3FiltroTipo" @bind:after="OnGridB3FiltroAlterado">
+                            <option value="">Todas</option>
+                            <option value="Compra">Compra</option>
+                            <option value="Venda">Venda</option>
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <label class="field" style="width: 140px;">
+                        <span>Tipo de provento</span>
+                        <select @bind="_gridB3FiltroTipoDividendo" @bind:after="OnGridB3FiltroAlterado">
+                            <option value="">Todos</option>
+                            <option value="Dividendo">Dividendo</option>
+                            <option value="JSCP">JSCP</option>
+                            <option value="Rendimento">Rendimento</option>
+                            <option value="Aluguel">Aluguel</option>
+                            <option value="Outro">Outro</option>
+                        </select>
+                    </label>
+                }
+
+                <div class="search-field" style="margin-top: 19px; flex: 1; min-width: 200px;">
+                    <Icon Name="search" Size="16" />
+                    <input type="text" placeholder="Filtrar por papel ou descrição..." value="@_gridB3Busca" @oninput="OnGridB3BuscaAlterada" />
+                </div>
+            </div>
+
+            @if (_gridB3Aba == "transacoes")
+            {
+                var transacoesFiltradas = ObterTransacoesB3Filtradas().ToList();
+                var total = transacoesFiltradas.Count;
+                var totalPaginas = Math.Max(1, (int)Math.Ceiling((double)total / _gridB3TamanhoPagina));
+                if (_gridB3PaginaAtual > totalPaginas) _gridB3PaginaAtual = totalPaginas;
+
+                var inicio = total == 0 ? 0 : ((_gridB3PaginaAtual - 1) * _gridB3TamanhoPagina) + 1;
+                var fim = Math.Min(_gridB3PaginaAtual * _gridB3TamanhoPagina, total);
+                var itensPagina = transacoesFiltradas.Skip((_gridB3PaginaAtual - 1) * _gridB3TamanhoPagina).Take(_gridB3TamanhoPagina).ToList();
+
+                if (total == 0)
+                {
+                    <div style="padding: 28px; text-align: center; color: var(--muted); font-size: 13px;">
+                        @if ((_ultimoResultadoB3.Transacoes?.Count ?? 0) == 0)
+                        {
+                            <span>Nenhuma transação nova importada nesta planilha (as linhas existentes foram ignoradas por já constarem na base).</span>
+                        }
+                        else
+                        {
+                            <span>Nenhuma transação corresponde aos filtros informados.</span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    var totalOperado = itensPagina.Sum(t => t.ValorTotal);
+                    <div class="table-shell">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarGridB3("Data")'>
+                                        Data @IndicadorOrdenacaoGridB3("Data")
+                                    </th>
+                                    <th style="cursor:pointer;" @onclick='() => OrdenarGridB3("Papel")'>
+                                        Papel @IndicadorOrdenacaoGridB3("Papel")
+                                    </th>
+                                    <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarGridB3("Tipo")'>
+                                        Tipo @IndicadorOrdenacaoGridB3("Tipo")
+                                    </th>
+                                    <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarGridB3("Quantidade")'>
+                                        Quantidade @IndicadorOrdenacaoGridB3("Quantidade")
+                                    </th>
+                                    <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarGridB3("ValorUnitario")'>
+                                        Valor unitário @IndicadorOrdenacaoGridB3("ValorUnitario")
+                                    </th>
+                                    <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarGridB3("ValorTotal")'>
+                                        Total @IndicadorOrdenacaoGridB3("ValorTotal")
+                                    </th>
+                                    <th style="cursor:pointer;" @onclick='() => OrdenarGridB3("Descricao")'>
+                                        Descrição / Movimentação @IndicadorOrdenacaoGridB3("Descricao")
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in itensPagina)
+                                {
+                                    <tr>
+                                        <td class="alinhar-centro">@item.Data.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <a class="paper-link" href="/papeis/@item.PapelId"><strong>@item.Codigo</strong></a>
+                                            @if (!string.IsNullOrWhiteSpace(item.NomePapel))
+                                            {
+                                                <small style="display:block;color:var(--muted);font-size:11px;">@item.NomePapel</small>
+                                            }
+                                        </td>
+                                        <td class="alinhar-centro">
+                                            <span class="badge @(item.TipoTransacao == TipoTransacao.Compra ? "badge-positive" : "badge-negative")">
+                                                @item.TipoTransacao
+                                            </span>
+                                        </td>
+                                        <td class="alinhar-direita">@item.Quantidade.ToString("N2")</td>
+                                        <td class="alinhar-direita">@item.ValorUnitario.ToString("C2")</td>
+                                        <td class="alinhar-direita font-bold">@item.ValorTotal.ToString("C2")</td>
+                                        <td style="color:var(--muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;">@item.Descricao</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        <div class="table-footer">
+                            <strong>Total operado (página): @totalOperado.ToString("C2")</strong>
+                            <span>Mostrando @inicio–@fim de @total transações</span>
+                            <PaginacaoGrid PaginaAtual="_gridB3PaginaAtual" TotalPaginas="totalPaginas" @bind-TamanhoPagina="_gridB3TamanhoPagina" OnPaginaMudou="MudarPaginaGridB3" />
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                var dividendosFiltrados = ObterDividendosB3Filtrados().ToList();
+                var total = dividendosFiltrados.Count;
+                var totalPaginas = Math.Max(1, (int)Math.Ceiling((double)total / _gridB3TamanhoPagina));
+                if (_gridB3PaginaAtual > totalPaginas) _gridB3PaginaAtual = totalPaginas;
+
+                var inicio = total == 0 ? 0 : ((_gridB3PaginaAtual - 1) * _gridB3TamanhoPagina) + 1;
+                var fim = Math.Min(_gridB3PaginaAtual * _gridB3TamanhoPagina, total);
+                var itensPagina = dividendosFiltrados.Skip((_gridB3PaginaAtual - 1) * _gridB3TamanhoPagina).Take(_gridB3TamanhoPagina).ToList();
+
+                if (total == 0)
+                {
+                    <div style="padding: 28px; text-align: center; color: var(--muted); font-size: 13px;">
+                        <span>Nenhum provento corresponde aos filtros informados.</span>
+                    </div>
+                }
+                else
+                {
+                    var totalRecebido = itensPagina.Sum(d => d.ValorRecebido);
+                    <div class="table-shell">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarGridB3("Data")'>
+                                        Data @IndicadorOrdenacaoGridB3("Data")
+                                    </th>
+                                    <th style="cursor:pointer;" @onclick='() => OrdenarGridB3("Papel")'>
+                                        Papel @IndicadorOrdenacaoGridB3("Papel")
+                                    </th>
+                                    <th class="alinhar-centro" style="cursor:pointer;" @onclick='() => OrdenarGridB3("TipoDividendo")'>
+                                        Tipo @IndicadorOrdenacaoGridB3("TipoDividendo")
+                                    </th>
+                                    <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarGridB3("Quantidade")'>
+                                        Quantidade @IndicadorOrdenacaoGridB3("Quantidade")
+                                    </th>
+                                    <th class="alinhar-direita" style="cursor:pointer;" @onclick='() => OrdenarGridB3("ValorRecebido")'>
+                                        Valor recebido @IndicadorOrdenacaoGridB3("ValorRecebido")
+                                    </th>
+                                    <th style="cursor:pointer;" @onclick='() => OrdenarGridB3("Descricao")'>
+                                        Descrição / Movimentação @IndicadorOrdenacaoGridB3("Descricao")
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in itensPagina)
+                                {
+                                    <tr>
+                                        <td class="alinhar-centro">@item.Data.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <a class="paper-link" href="/papeis/@item.PapelId"><strong>@item.Codigo</strong></a>
+                                            @if (!string.IsNullOrWhiteSpace(item.NomePapel))
+                                            {
+                                                <small style="display:block;color:var(--muted);font-size:11px;">@item.NomePapel</small>
+                                            }
+                                        </td>
+                                        <td class="alinhar-centro">
+                                            <span class="badge badge-info">@item.TipoDividendo</span>
+                                        </td>
+                                        <td class="alinhar-direita">@item.Quantidade.ToString("N2")</td>
+                                        <td class="alinhar-direita font-bold">@item.ValorRecebido.ToString("C2")</td>
+                                        <td style="color:var(--muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;">@item.Descricao</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        <div class="table-footer">
+                            <strong>Total recebido (página): @totalRecebido.ToString("C2")</strong>
+                            <span>Mostrando @inicio–@fim de @total proventos</span>
+                            <PaginacaoGrid PaginaAtual="_gridB3PaginaAtual" TotalPaginas="totalPaginas" @bind-TamanhoPagina="_gridB3TamanhoPagina" OnPaginaMudou="MudarPaginaGridB3" />
+                        </div>
+                    </div>
+                }
+            }
+        </section>
     }
     else if (_ultimoResultadoCotacoes is not null)
     {
@@ -741,8 +964,120 @@ else if (_abaAtiva == "ambiente")
     private string? _mensagemSucesso;
 
     private ImportarB3Response? _ultimoResultadoB3;
+    private string _gridB3Aba = "transacoes";
+    private int _gridB3PaginaAtual = 1;
+    private int _gridB3TamanhoPagina = 15;
+    private string _gridB3Busca = string.Empty;
+    private string _gridB3FiltroTipo = string.Empty;
+    private string _gridB3FiltroTipoDividendo = string.Empty;
+    private string _gridB3ColunaOrdenacao = "Data";
+    private bool _gridB3OrdemAscendente = false; // mais recentes primeiro por padrão
     private ImportarCotacoesResponse? _ultimoResultadoCotacoes;
     private RestaurarBackupResponse? _ultimoResultadoRestauracao;
+
+    private void SelecionarGridB3Aba(string aba)
+    {
+        _gridB3Aba = aba;
+        _gridB3PaginaAtual = 1;
+    }
+
+    private void OnGridB3FiltroAlterado()
+    {
+        _gridB3PaginaAtual = 1;
+    }
+
+    private void OnGridB3BuscaAlterada(ChangeEventArgs e)
+    {
+        _gridB3Busca = e.Value?.ToString() ?? string.Empty;
+        _gridB3PaginaAtual = 1;
+    }
+
+    private void MudarPaginaGridB3(int novaPagina)
+    {
+        _gridB3PaginaAtual = novaPagina;
+    }
+
+    private void OrdenarGridB3(string coluna)
+    {
+        if (_gridB3ColunaOrdenacao == coluna)
+        {
+            _gridB3OrdemAscendente = !_gridB3OrdemAscendente;
+        }
+        else
+        {
+            _gridB3ColunaOrdenacao = coluna;
+            _gridB3OrdemAscendente = true;
+        }
+        _gridB3PaginaAtual = 1;
+    }
+
+    private string IndicadorOrdenacaoGridB3(string coluna) =>
+        _gridB3ColunaOrdenacao == coluna ? (_gridB3OrdemAscendente ? "▲" : "▼") : string.Empty;
+
+    private IEnumerable<TransacaoImportadaDto> ObterTransacoesB3Filtradas()
+    {
+        if (_ultimoResultadoB3?.Transacoes is null) return Enumerable.Empty<TransacaoImportadaDto>();
+
+        var itens = _ultimoResultadoB3.Transacoes.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_gridB3FiltroTipo) && Enum.TryParse<TipoTransacao>(_gridB3FiltroTipo, out var tipo))
+        {
+            itens = itens.Where(t => t.TipoTransacao == tipo);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_gridB3Busca))
+        {
+            var termo = _gridB3Busca.Trim();
+            itens = itens.Where(t =>
+                t.Codigo.Contains(termo, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrEmpty(t.NomePapel) && t.NomePapel.Contains(termo, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrEmpty(t.Descricao) && t.Descricao.Contains(termo, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return _gridB3ColunaOrdenacao switch
+        {
+            "Data" => _gridB3OrdemAscendente ? itens.OrderBy(t => t.Data) : itens.OrderByDescending(t => t.Data),
+            "Papel" => _gridB3OrdemAscendente ? itens.OrderBy(t => t.Codigo) : itens.OrderByDescending(t => t.Codigo),
+            "Tipo" => _gridB3OrdemAscendente ? itens.OrderBy(t => t.TipoTransacao) : itens.OrderByDescending(t => t.TipoTransacao),
+            "Quantidade" => _gridB3OrdemAscendente ? itens.OrderBy(t => t.Quantidade) : itens.OrderByDescending(t => t.Quantidade),
+            "ValorUnitario" => _gridB3OrdemAscendente ? itens.OrderBy(t => t.ValorUnitario) : itens.OrderByDescending(t => t.ValorUnitario),
+            "ValorTotal" => _gridB3OrdemAscendente ? itens.OrderBy(t => t.ValorTotal) : itens.OrderByDescending(t => t.ValorTotal),
+            "Descricao" => _gridB3OrdemAscendente ? itens.OrderBy(t => t.Descricao) : itens.OrderByDescending(t => t.Descricao),
+            _ => itens
+        };
+    }
+
+    private IEnumerable<DividendoImportadoDto> ObterDividendosB3Filtrados()
+    {
+        if (_ultimoResultadoB3?.Dividendos is null) return Enumerable.Empty<DividendoImportadoDto>();
+
+        var itens = _ultimoResultadoB3.Dividendos.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_gridB3FiltroTipoDividendo) && Enum.TryParse<TipoDividendo>(_gridB3FiltroTipoDividendo, out var tipo))
+        {
+            itens = itens.Where(d => d.TipoDividendo == tipo);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_gridB3Busca))
+        {
+            var termo = _gridB3Busca.Trim();
+            itens = itens.Where(d =>
+                d.Codigo.Contains(termo, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrEmpty(d.NomePapel) && d.NomePapel.Contains(termo, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrEmpty(d.Descricao) && d.Descricao.Contains(termo, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return _gridB3ColunaOrdenacao switch
+        {
+            "Data" => _gridB3OrdemAscendente ? itens.OrderBy(d => d.Data) : itens.OrderByDescending(d => d.Data),
+            "Papel" => _gridB3OrdemAscendente ? itens.OrderBy(d => d.Codigo) : itens.OrderByDescending(d => d.Codigo),
+            "TipoDividendo" => _gridB3OrdemAscendente ? itens.OrderBy(d => d.TipoDividendo) : itens.OrderByDescending(d => d.TipoDividendo),
+            "Quantidade" => _gridB3OrdemAscendente ? itens.OrderBy(d => d.Quantidade) : itens.OrderByDescending(d => d.Quantidade),
+            "ValorRecebido" => _gridB3OrdemAscendente ? itens.OrderBy(d => d.ValorRecebido) : itens.OrderByDescending(d => d.ValorRecebido),
+            "Descricao" => _gridB3OrdemAscendente ? itens.OrderBy(d => d.Descricao) : itens.OrderByDescending(d => d.Descricao),
+            _ => itens
+        };
+    }
 
     private readonly ModeloSenhaForm _modeloSenha = new();
     private readonly ModeloCriarUsuarioForm _modeloCriarUsuario = new();
@@ -767,6 +1102,13 @@ else if (_abaAtiva == "ambiente")
             if (resultado is ImportarB3Response b3)
             {
                 _ultimoResultadoB3 = b3;
+                _gridB3PaginaAtual = 1;
+                _gridB3Busca = string.Empty;
+                _gridB3FiltroTipo = string.Empty;
+                _gridB3FiltroTipoDividendo = string.Empty;
+                _gridB3Aba = (b3.Transacoes?.Count ?? 0) > 0 ? "transacoes" : "dividendos";
+                _gridB3ColunaOrdenacao = "Data";
+                _gridB3OrdemAscendente = false;
                 _mensagemSucesso = $"Importação concluída: {b3.PapeisCriados} papel(éis), {b3.TransacoesCriadas} transação(ões), {b3.DividendosCriados} dividendo(s), {b3.MovimentosAluguelCriados} movimento(s) de aluguel.";
             }
             else if (resultado is ImportarCotacoesResponse cotacoes)

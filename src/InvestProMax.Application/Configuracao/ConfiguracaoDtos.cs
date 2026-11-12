@@ -1,4 +1,29 @@
+using InvestProMax.Domain.Enums;
+
 namespace InvestProMax.Application.Configuracao;
+
+public sealed record TransacaoImportadaDto(
+    Guid Id,
+    Guid PapelId,
+    string Codigo,
+    string? NomePapel,
+    TipoTransacao TipoTransacao,
+    decimal Quantidade,
+    decimal ValorUnitario,
+    decimal ValorTotal,
+    DateOnly Data,
+    string? Descricao);
+
+public sealed record DividendoImportadoDto(
+    Guid Id,
+    Guid PapelId,
+    string Codigo,
+    string? NomePapel,
+    TipoDividendo TipoDividendo,
+    decimal Quantidade,
+    decimal ValorRecebido,
+    DateOnly Data,
+    string? Descricao);
 
 public sealed record ImportarB3Response(
     int PapeisCriados,
@@ -6,7 +31,9 @@ public sealed record ImportarB3Response(
     int DividendosCriados,
     int LinhasIgnoradasDuplicadas,
     int LinhasIgnoradasNaoReconhecidas,
-    int MovimentosAluguelCriados = 0);
+    int MovimentosAluguelCriados = 0,
+    IReadOnlyList<TransacaoImportadaDto>? Transacoes = null,
+    IReadOnlyList<DividendoImportadoDto>? Dividendos = null);
 
 public sealed record ImportarCotacoesResponse(int CotacoesAtualizadas, IReadOnlyList<string> CodigosNaoEncontrados);
 
