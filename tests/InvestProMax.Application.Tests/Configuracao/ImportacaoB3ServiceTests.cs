@@ -19,6 +19,7 @@ public class ImportacaoB3ServiceTests
     private readonly Mock<IDividendoRepository> _dividendoRepository = new();
     private readonly Mock<IMovimentoAluguelRepository> _movimentoAluguelRepository = new();
     private readonly Mock<IUsuarioLogado> _usuarioLogado = new();
+    private readonly Mock<IMongoBackupService> _mongoBackupService = new();
     private readonly Guid _usuarioId = Guid.NewGuid();
     private readonly ImportacaoB3Service _sut;
 
@@ -32,7 +33,7 @@ public class ImportacaoB3ServiceTests
 
         _sut = new ImportacaoB3Service(
             _reader.Object, _papelRepository.Object, _transacaoRepository.Object, _dividendoRepository.Object,
-            _movimentoAluguelRepository.Object, _usuarioLogado.Object);
+            _movimentoAluguelRepository.Object, _usuarioLogado.Object, _mongoBackupService.Object);
     }
 
     private static LinhaExtratoB3 LinhaTransferencia(string entradaSaida = "Credito", decimal quantidade = 100, decimal? precoUnitario = 30m, decimal valorOperacao = 3000m) =>
@@ -282,5 +283,163 @@ public class ImportacaoB3ServiceTests
         {
             System.Globalization.CultureInfo.CurrentCulture = culturaOriginal;
         }
+    }
+
+    [Fact]
+    public async Task Grupamento_na_importacao_B3_ajusta_transacoes_e_dividendos_anteriores_faz_backup_e_zera_saldo_apos_leilao_de_fracao()
+    {
+        var compraAntiga = new Transacao
+        {
+            PapelId = Guid.Empty,
+            TipoTransacao = TipoTransacao.Compra,
+            Quantidade = 20m,
+            ValorUnitario = 46m,
+            Data = new DateOnly(2024, 4, 9),
+            Descricao = "Importado da B3: Transferência - Liquidação"
+        };
+        var dividendoAntigo = new Dividendo
+        {
+            PapelId = Guid.Empty,
+            TipoDividendo = TipoDividendo.JSCP,
+            Quantidade = 20m,
+            ValorRecebido = 15m,
+            Data = new DateOnly(2025, 4, 8),
+            Descricao = "Importado da B3: Juros Sobre Capital Próprio"
+        };
+        var vendaArtificialLegada = new Transacao
+        {
+            PapelId = Guid.Empty,
+            TipoTransacao = TipoTransacao.Venda,
+            Quantidade = 0.5m,
+            ValorUnitario = 0m,
+            Data = new DateOnly(2025, 4, 16),
+            Descricao = "Importado da B3: Grupamento"
+        };
+
+        var papelVivt = new Papel
+        {
+            UsuarioId = _usuarioId,
+            Codigo = "VIVT3",
+            Nome = "TELEFONICA BRASIL S/A",
+            Ativo = true,
+            Transacoes = new List<Transacao> { compraAntiga, vendaArtificialLegada },
+            Dividendos = new List<Dividendo> { dividendoAntigo }
+        };
+        compraAntiga.PapelId = papelVivt.Id;
+        dividendoAntigo.PapelId = papelVivt.Id;
+        vendaArtificialLegada.PapelId = papelVivt.Id;
+
+        _papelRepository.Setup(r => r.ObterPorCodigoAsync(_usuarioId, "VIVT3", default)).ReturnsAsync(papelVivt);
+        _papelRepository.Setup(r => r.ObterPorIdAsync(papelVivt.Id, _usuarioId, default)).ReturnsAsync(papelVivt);
+        _transacaoRepository.Setup(r => r.ListarPorPapelAsync(papelVivt.Id, default)).ReturnsAsync(() => papelVivt.Transacoes.ToList());
+        _dividendoRepository.Setup(r => r.ListarPorPapelAsync(papelVivt.Id, default)).ReturnsAsync(() => papelVivt.Dividendos.ToList());
+
+        _transacaoRepository
+            .Setup(r => r.AdicionarEmLoteAsync(It.IsAny<IEnumerable<Transacao>>(), default))
+            .Callback<IEnumerable<Transacao>, CancellationToken>((novas, _) =>
+            {
+                foreach (var n in novas)
+                {
+                    papelVivt.Transacoes.Add(n);
+                }
+            })
+            .Returns(Task.CompletedTask);
+
+        _transacaoRepository
+            .Setup(r => r.RemoverEmLoteAsync(It.IsAny<IEnumerable<Transacao>>(), default))
+            .Callback<IEnumerable<Transacao>, CancellationToken>((rem, _) =>
+            {
+                foreach (var item in rem.ToList())
+                {
+                    papelVivt.Transacoes.Remove(item);
+                }
+            })
+            .Returns(Task.CompletedTask);
+
+        _reader.Setup(r => r.Ler(It.IsAny<Stream>())).Returns(new List<LinhaExtratoB3>
+        {
+            new("Credito", new DateOnly(2025, 4, 16), "Grupamento", "VIVT3 - TELEFONICA BRASIL S/A", 0.5m, null, 0m),
+            new("Credito", new DateOnly(2025, 5, 28), "Leilão de Fração", "VIVT3 - TELEFONICA BRASIL S/A", 0.5m, 2131.357m, 1065.67m)
+        });
+
+        await _sut.ImportarAsync(new MemoryStream());
+
+        compraAntiga.Quantidade.Should().Be(0.5m);
+        compraAntiga.ValorUnitario.Should().Be(1840m);
+        compraAntiga.Historico.Should().BeTrue();
+        compraAntiga.Descricao.Should().Contain("[Grupamento 16/04/2025]");
+
+        dividendoAntigo.Quantidade.Should().Be(0.5m);
+        dividendoAntigo.ValorRecebido.Should().Be(15m);
+        dividendoAntigo.Historico.Should().BeTrue();
+
+        papelVivt.Transacoes.Should().NotContain(vendaArtificialLegada);
+        var saldoFinal = papelVivt.Transacoes.Sum(t => t.TipoTransacao == TipoTransacao.Compra ? t.Quantidade : -t.Quantidade);
+        saldoFinal.Should().Be(0m);
+        papelVivt.Ativo.Should().BeFalse();
+
+        _mongoBackupService.Verify(m => m.RegistrarBackupEventoPapelAsync(
+            It.Is<IReadOnlyList<BackupTransacaoEventoItem>>(b =>
+                b.Count == 1 &&
+                b[0].TransacaoId == compraAntiga.Id &&
+                b[0].TipoAcao == "Grupamento" &&
+                b[0].FatorMultiplicador == 40m &&
+                b[0].QuantidadeAnterior == 20m &&
+                b[0].QuantidadeAtual == 0.5m &&
+                b[0].ValorAnterior == 46m &&
+                b[0].ValorAtual == 1840m &&
+                b[0].CodigoAnterior == "VIVT3" &&
+                b[0].CodigoAtual == "VIVT3"),
+            It.Is<IReadOnlyList<BackupDividendoEventoItem>>(b =>
+                b.Count == 1 &&
+                b[0].DividendoId == dividendoAntigo.Id &&
+                b[0].TipoAcao == "Grupamento" &&
+                b[0].FatorMultiplicador == 40m &&
+                b[0].QuantidadeAnterior == 20m &&
+                b[0].QuantidadeAtual == 0.5m &&
+                b[0].ValorAnterior == 15m &&
+                b[0].ValorAtual == 15m),
+            default), Times.Once);
+    }
+
+    [Fact]
+    public async Task Desdobro_na_importacao_B3_calcula_fator_somando_quantidade_creditada_ao_saldo_anterior()
+    {
+        var papel = new Papel
+        {
+            UsuarioId = _usuarioId,
+            Codigo = "BBAS3",
+            Nome = "BANCO DO BRASIL S/A",
+            Ativo = true,
+            Transacoes = new List<Transacao>()
+        };
+        var compra = new Transacao
+        {
+            PapelId = papel.Id,
+            TipoTransacao = TipoTransacao.Compra,
+            Quantidade = 9m,
+            ValorUnitario = 60m,
+            Data = new DateOnly(2024, 2, 7),
+            Descricao = "Importado da B3: Transferência - Liquidação"
+        };
+        papel.Transacoes.Add(compra);
+
+        _papelRepository.Setup(r => r.ObterPorCodigoAsync(_usuarioId, "BBAS3", default)).ReturnsAsync(papel);
+        _papelRepository.Setup(r => r.ObterPorIdAsync(papel.Id, _usuarioId, default)).ReturnsAsync(papel);
+        _transacaoRepository.Setup(r => r.ListarPorPapelAsync(papel.Id, default)).ReturnsAsync(() => papel.Transacoes.ToList());
+        _dividendoRepository.Setup(r => r.ListarPorPapelAsync(papel.Id, default)).ReturnsAsync(new List<Dividendo>());
+
+        // Saldo anterior = 9, Desdobro credita +9 -> nova quantidade total = 18 (fator 2)
+        _reader.Setup(r => r.Ler(It.IsAny<Stream>())).Returns(new List<LinhaExtratoB3>
+        {
+            new("Credito", new DateOnly(2024, 4, 16), "Desdobro", "BBAS3 - BANCO DO BRASIL S/A", 9m, null, 0m)
+        });
+
+        await _sut.ImportarAsync(new MemoryStream());
+
+        compra.Quantidade.Should().Be(18m);
+        compra.ValorUnitario.Should().Be(30m);
+        compra.Historico.Should().BeTrue();
+        compra.Descricao.Should().Contain("[Desdobramento 16/04/2024]");
     }
 }

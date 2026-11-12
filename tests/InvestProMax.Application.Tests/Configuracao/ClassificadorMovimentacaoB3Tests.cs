@@ -1,5 +1,6 @@
 using FluentAssertions;
 using InvestProMax.Application.Configuracao;
+using InvestProMax.Application.Papeis;
 using InvestProMax.Domain.Enums;
 using Xunit;
 
@@ -32,8 +33,6 @@ public class ClassificadorMovimentacaoB3Tests
 
     [Theory]
     [InlineData("Bonificação em Ativos", TipoTransacao.Compra, true)]
-    [InlineData("Desdobro", TipoTransacao.Compra, true)]
-    [InlineData("Grupamento", TipoTransacao.Venda, true)]
     [InlineData("Solicitação de Subscrição", TipoTransacao.Compra, false)]
     [InlineData("Leilão de Fração", TipoTransacao.Venda, false)]
     public void Eventos_de_quantidade_sao_classificados_como_transacao_com_direcao_fixa(
@@ -44,6 +43,18 @@ public class ClassificadorMovimentacaoB3Tests
         resultado.Tipo.Should().Be(TipoRegistroImportado.Transacao);
         resultado.TipoTransacao.Should().Be(direcaoEsperada);
         resultado.ValorUnitarioZerado.Should().Be(valorZeradoEsperado);
+    }
+
+    [Theory]
+    [InlineData("Desdobro", TipoEventoPapel.Desdobramento)]
+    [InlineData("Grupamento", TipoEventoPapel.Grupamento)]
+    public void Desdobro_e_grupamento_sao_classificados_como_evento_de_papel(
+        string movimentacao, TipoEventoPapel tipoEsperado)
+    {
+        var resultado = ClassificadorMovimentacaoB3.Classificar(movimentacao);
+
+        resultado.Tipo.Should().Be(TipoRegistroImportado.EventoPapel);
+        resultado.TipoEventoPapel.Should().Be(tipoEsperado);
     }
 
     [Fact]

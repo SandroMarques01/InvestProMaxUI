@@ -277,26 +277,6 @@ public sealed class PapelService : IPapelService
             transacao.Descricao = string.IsNullOrWhiteSpace(transacao.Descricao) ? marcador : $"{transacao.Descricao} {marcador}";
         }
 
-        foreach (var artificial in transacoesArtificiaisEvento)
-        {
-            backupTransacoes.Add(new BackupTransacaoEventoItem(
-                TransacaoId: artificial.Id,
-                PapelAnteriorId: papel.Id,
-                PapelAtualId: papel.Id,
-                CodigoAnterior: papel.Codigo,
-                CodigoAtual: papel.Codigo,
-                DataAcao: request.Data,
-                TipoAcao: tipoAcao,
-                FatorMultiplicador: request.Fator,
-                DataTransacao: artificial.Data,
-                TipoTransacao: artificial.TipoTransacao.ToString(),
-                QuantidadeAnterior: artificial.Quantidade,
-                QuantidadeAtual: 0m,
-                ValorAnterior: artificial.ValorUnitario,
-                ValorAtual: 0m,
-                Descricao: artificial.Descricao));
-        }
-
         var backupDividendos = new List<BackupDividendoEventoItem>();
         foreach (var dividendo in dividendos)
         {
@@ -350,7 +330,7 @@ public sealed class PapelService : IPapelService
         return ParaResponse(await ObterOuFalharAsync(papel.Id, ct));
     }
 
-    private static bool EhTransacaoArtificialDeEventoB3(string? descricao, TipoEventoPapel tipo)
+    internal static bool EhTransacaoArtificialDeEventoB3(string? descricao, TipoEventoPapel tipo)
     {
         if (string.IsNullOrWhiteSpace(descricao)) return false;
         return tipo == TipoEventoPapel.Grupamento

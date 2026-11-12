@@ -3,11 +3,11 @@
     "Name": "Api + Web",
     "Projects": [
       {
-        "Path": "src\\InvestProMax.Api\\InvestProMax.Api.csproj",
+        "Path": "src\\InvestProMax.Web\\InvestProMax.Web.csproj",
         "Action": "Start"
       },
       {
-        "Path": "src\\InvestProMax.Web\\InvestProMax.Web.csproj",
+        "Path": "src\\InvestProMax.Api\\InvestProMax.Api.csproj",
         "Action": "Start"
       }
     ]

@@ -85,9 +85,9 @@ public class ValidacaoPlanilhasReaisTests : IClassFixture<CustomWebApplicationFa
             totalAlugueisCriados += resp.MovimentosAluguelCriados;
         }
 
-        // Validações da Seção 7
+        // Validações da Seção 7 (8 Desdobros + 1 Grupamento = 9 eventos corporativos aplicados sobre o histórico em vez de transações avulsas)
         totalPapeisCriados.Should().Be(75, "devem ser criados 75 papéis");
-        totalTransacoesCriadas.Should().Be(1107, "devem ser criadas 1107 transações");
+        totalTransacoesCriadas.Should().Be(1098, "devem ser criadas 1098 transações");
         totalDividendosCriados.Should().Be(1499, "devem ser criados 1499 proventos");
         totalLinhasIgnoradas.Should().Be(283, "devem ser 283 linhas não reconhecidas/ignoradas");
 
@@ -95,14 +95,18 @@ public class ValidacaoPlanilhasReaisTests : IClassFixture<CustomWebApplicationFa
         var todosPapeis = await papelRepo.ListarTodosDoUsuarioAsync(usuarioId);
         todosPapeis.Should().NotContain(p => p.Codigo.EndsWith("12") || p.Codigo.EndsWith("13"));
 
-        // Conferências gerais de papéis em carteira
+        // Conferências gerais de papéis em carteira (VIVT3 fica zerada após grupamento 40:1 + leilão de fração de 0,5)
         var geral = await papelService.ObterPapeisGeralAsync(somenteAtivos: null);
+        var vivt3 = geral.Itens.Single(i => i.Codigo == "VIVT3");
+        vivt3.QuantidadeTotal.Should().Be(0m);
+        vivt3.Ativo.Should().BeFalse();
+
         var emCarteira = geral.Itens.Where(i => i.QuantidadeTotal > 0).ToList();
-        emCarteira.Should().HaveCount(50, "50 papéis com quantidade > 0");
+        emCarteira.Should().HaveCount(49, "49 papéis com quantidade > 0 após zerar VIVT3");
 
         var acoes = geral.Itens.Where(i => i.TipoPapel == TipoPapel.Acao && i.QuantidadeTotal > 0).ToList();
-        acoes.Should().HaveCount(14);
-        acoes.Sum(a => a.QuantidadeTotal).Should().Be(1857.41m, "1857 inteiras + 0.41 fração CMIG4 conforme seção 10");
+        acoes.Should().HaveCount(13);
+        acoes.Sum(a => a.QuantidadeTotal).Should().Be(1838.41m, "1838 inteiras + 0.41 fração CMIG4 sem as 19 ações fantasmas de VIVT3");
         acoes.Sum(a => a.QuantidadeEmAluguel).Should().Be(1354m);
 
         var bdrs = geral.Itens.Where(i => i.TipoPapel == TipoPapel.BDR && i.QuantidadeTotal > 0).ToList();

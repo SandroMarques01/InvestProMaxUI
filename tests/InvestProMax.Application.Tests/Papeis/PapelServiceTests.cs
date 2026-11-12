@@ -257,7 +257,7 @@ public class PapelServiceTests
 
         _mongoBackupService.Verify(m => m.RegistrarBackupEventoPapelAsync(
             It.Is<IReadOnlyList<BackupTransacaoEventoItem>>(b =>
-                b.Count == 2 &&
+                b.Count == 1 &&
                 b.Any(x => x.TransacaoId == compraAntiga.Id && x.QuantidadeAnterior == 20m && x.QuantidadeAtual == 0.5m && x.ValorAnterior == 46m && x.ValorAtual == 1840m && x.TipoAcao == "Grupamento")),
             It.IsAny<IReadOnlyList<BackupDividendoEventoItem>>(),
             default), Times.Once);

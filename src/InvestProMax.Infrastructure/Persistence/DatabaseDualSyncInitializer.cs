@@ -167,62 +167,101 @@ public static class DatabaseDualSyncInitializer
         await supabaseDb.SaveChangesAsync(ct);
 
         // 5. Transacoes
-        var transacoesLocais = await localDb.Transacoes.AsNoTracking().ToListAsync(ct);
+        var transacoesLocais = await localDb.Transacoes.ToListAsync(ct);
         var transacoesRemotas = await supabaseDb.Transacoes.ToDictionaryAsync(t => t.Id, ct);
-        foreach (var t in transacoesLocais)
+        var papeisComEventoCorporativo = transacoesLocais.Where(t => t.Historico).Select(t => t.PapelId)
+            .Concat(transacoesRemotas.Values.Where(t => t.Historico).Select(t => t.PapelId))
+            .ToHashSet();
+
+        var alterouTransacoesLocal = false;
+        foreach (var t in transacoesLocais.ToList())
         {
-            var clone = (Transacao)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(t)!;
+            if (papeisComEventoCorporativo.Contains(t.PapelId) && EhTransacaoArtificialEventoB3(t.Descricao)
+                && !transacoesRemotas.ContainsKey(t.Id))
+            {
+                localDb.Transacoes.Remove(t);
+                transacoesLocais.Remove(t);
+                alterouTransacoesLocal = true;
+                continue;
+            }
+
             if (transacoesRemotas.TryGetValue(t.Id, out var existente))
             {
-                supabaseDb.Entry(existente).CurrentValues.SetValues(clone);
+                if (existente.Historico && !t.Historico)
+                {
+                    var cloneRemoto = (Transacao)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(existente)!;
+                    localDb.Entry(t).CurrentValues.SetValues(cloneRemoto);
+                    alterouTransacoesLocal = true;
+                }
+                else
+                {
+                    var clone = (Transacao)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(t)!;
+                    supabaseDb.Entry(existente).CurrentValues.SetValues(clone);
+                }
             }
             else
             {
+                var clone = (Transacao)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(t)!;
                 await supabaseDb.Transacoes.AddAsync(clone, ct);
             }
         }
-        await supabaseDb.SaveChangesAsync(ct);
 
         var idsTransacoesLocais = transacoesLocais.Select(t => t.Id).ToHashSet();
-        var novosTransacoesLocal = false;
         foreach (var (id, r) in transacoesRemotas)
         {
             if (!idsTransacoesLocais.Contains(id))
             {
+                if (papeisComEventoCorporativo.Contains(r.PapelId) && EhTransacaoArtificialEventoB3(r.Descricao))
+                {
+                    supabaseDb.Transacoes.Remove(r);
+                    continue;
+                }
+
                 await localDb.Transacoes.AddAsync((Transacao)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(r)!, ct);
-                novosTransacoesLocal = true;
+                alterouTransacoesLocal = true;
             }
         }
-        if (novosTransacoesLocal) await localDb.SaveChangesAsync(ct);
+        await supabaseDb.SaveChangesAsync(ct);
+        if (alterouTransacoesLocal) await localDb.SaveChangesAsync(ct);
 
         // 6. Dividendos
-        var dividendosLocais = await localDb.Dividendos.AsNoTracking().ToListAsync(ct);
+        var dividendosLocais = await localDb.Dividendos.ToListAsync(ct);
         var dividendosRemotos = await supabaseDb.Dividendos.ToDictionaryAsync(d => d.Id, ct);
+        var alterouDivLocal = false;
         foreach (var d in dividendosLocais)
         {
-            var clone = (Dividendo)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(d)!;
             if (dividendosRemotos.TryGetValue(d.Id, out var existente))
             {
-                supabaseDb.Entry(existente).CurrentValues.SetValues(clone);
+                if (existente.Historico && !d.Historico)
+                {
+                    var cloneRemoto = (Dividendo)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(existente)!;
+                    localDb.Entry(d).CurrentValues.SetValues(cloneRemoto);
+                    alterouDivLocal = true;
+                }
+                else
+                {
+                    var clone = (Dividendo)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(d)!;
+                    supabaseDb.Entry(existente).CurrentValues.SetValues(clone);
+                }
             }
             else
             {
+                var clone = (Dividendo)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(d)!;
                 await supabaseDb.Dividendos.AddAsync(clone, ct);
             }
         }
         await supabaseDb.SaveChangesAsync(ct);
 
         var idsDivLocais = dividendosLocais.Select(d => d.Id).ToHashSet();
-        var novosDivLocal = false;
         foreach (var (id, r) in dividendosRemotos)
         {
             if (!idsDivLocais.Contains(id))
             {
                 await localDb.Dividendos.AddAsync((Dividendo)ReplicaSaveChangesInterceptor.ClonarEntidadeSemNavegacao(r)!, ct);
-                novosDivLocal = true;
+                alterouDivLocal = true;
             }
         }
-        if (novosDivLocal) await localDb.SaveChangesAsync(ct);
+        if (alterouDivLocal) await localDb.SaveChangesAsync(ct);
 
         // 7. MovimentosAluguel
         var alugueisLocais = await localDb.MovimentosAluguel.AsNoTracking().ToListAsync(ct);
@@ -382,6 +421,18 @@ public static class DatabaseDualSyncInitializer
         {
             SincronizacaoEmAndamento = false;
         }
+    }
+
+    private static bool EhTransacaoArtificialEventoB3(string? descricao)
+    {
+        if (string.IsNullOrWhiteSpace(descricao))
+        {
+            return false;
+        }
+
+        return descricao.StartsWith("Importado da B3: Grupamento", StringComparison.OrdinalIgnoreCase)
+            || descricao.StartsWith("Importado da B3: Desdobro", StringComparison.OrdinalIgnoreCase)
+            || descricao.StartsWith("Importado da B3: Desdobramento", StringComparison.OrdinalIgnoreCase);
     }
 }
 

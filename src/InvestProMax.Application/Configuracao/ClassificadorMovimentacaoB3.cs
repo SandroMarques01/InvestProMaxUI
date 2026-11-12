@@ -1,3 +1,4 @@
+using InvestProMax.Application.Papeis;
 using InvestProMax.Domain.Enums;
 using TipoDividendoEnum = InvestProMax.Domain.Enums.TipoDividendo;
 using TipoTransacaoEnum = InvestProMax.Domain.Enums.TipoTransacao;
@@ -8,6 +9,7 @@ public enum TipoRegistroImportado
 {
     Transacao,
     Dividendo,
+    EventoPapel,
     Ignorar
 }
 
@@ -19,26 +21,23 @@ public sealed record ClassificacaoB3(
     TipoRegistroImportado Tipo,
     TipoTransacao? TipoTransacao = null,
     TipoDividendo? TipoDividendo = null,
-    bool ValorUnitarioZerado = false);
+    bool ValorUnitarioZerado = false,
+    TipoEventoPapel? TipoEventoPapel = null);
 
 /// <summary>
 /// Regra 5: interpreta os tipos de movimentação do extrato da B3 listados na especificação
 /// (Bonificação em Ativos, Solicitação de Subscrição, Transferência - Liquidação, JSCP,
 /// Rendimento, Dividendo, Leilão de Fração, Desdobro, Grupamento, Restituição de Capital).
 ///
-/// ASSUNÇÃO SINALIZADA: a especificação não define, para cada tipo, se ele vira Transacao ou
-/// Dividendo, nem a direção (compra/venda) ou o custo unitário — só lista os nomes. As decisões
-/// abaixo seguem o formato real do extrato "Movimentação" exportado pela Área do Investidor da
-/// B3 (não incluído na especificação, nem havia uma planilha de exemplo disponível):
-///
 /// - "Transferência - Liquidação" é como a B3 registra a liquidação de compra/venda nesse
 ///   relatório (não "Compra"/"Venda" diretamente) — Entrada = Compra, Saída = Venda.
-/// - "Bonificação em Ativos" e "Desdobro" só aumentam a quantidade em carteira sem custo
-///   novo — tratados como Compra com ValorUnitario = 0, o que dilui corretamente o preço
+/// - "Bonificação em Ativos" só aumenta a quantidade em carteira sem custo
+///   novo — tratada como Compra com ValorUnitario = 0, o que dilui corretamente o preço
 ///   médio (regra 1) sem inventar um custo que não existiu.
-/// - "Grupamento" e "Leilão de Fração" reduzem a quantidade — tratados como Venda. No
-///   Leilão de Fração normalmente há dinheiro envolvido (venda da fração), então o valor da
-///   operação é usado; no Grupamento, ValorUnitario = 0 pelo mesmo motivo da Bonificação.
+/// - "Desdobro" e "Grupamento" são eventos corporativos (TipoRegistroImportado.EventoPapel):
+///   salvam o histórico anterior nas coleções IPM_BKP_Transacoes e IPM_BKP_Dividendos e
+///   ajustam quantidade e valor unitário das transações e dividendos anteriores à data do evento.
+/// - "Leilão de Fração" reduz a quantidade — tratada como Venda usando o valor da operação.
 /// - "Solicitação de Subscrição" tem custo real (o preço de exercício do direito) — Compra
 ///   usando o valor da linha.
 /// - "Dividendo", "Juros Sobre Capital Próprio"/"JSCP" e "Rendimento" mapeiam direto para o
@@ -60,8 +59,8 @@ public static class ClassificadorMovimentacaoB3
             "Transferência - Liquidação" => new ClassificacaoB3(TipoRegistroImportado.Transacao),
             "Solicitação de Subscrição" => new ClassificacaoB3(TipoRegistroImportado.Transacao, TipoTransacao: TipoTransacaoEnum.Compra),
             "Bonificação em Ativos" => new ClassificacaoB3(TipoRegistroImportado.Transacao, TipoTransacao: TipoTransacaoEnum.Compra, ValorUnitarioZerado: true),
-            "Desdobro" => new ClassificacaoB3(TipoRegistroImportado.Transacao, TipoTransacao: TipoTransacaoEnum.Compra, ValorUnitarioZerado: true),
-            "Grupamento" => new ClassificacaoB3(TipoRegistroImportado.Transacao, TipoTransacao: TipoTransacaoEnum.Venda, ValorUnitarioZerado: true),
+            "Desdobro" => new ClassificacaoB3(TipoRegistroImportado.EventoPapel, TipoEventoPapel: InvestProMax.Application.Papeis.TipoEventoPapel.Desdobramento),
+            "Grupamento" => new ClassificacaoB3(TipoRegistroImportado.EventoPapel, TipoEventoPapel: InvestProMax.Application.Papeis.TipoEventoPapel.Grupamento),
             "Leilão de Fração" => new ClassificacaoB3(TipoRegistroImportado.Transacao, TipoTransacao: TipoTransacaoEnum.Venda),
             "Dividendo" => new ClassificacaoB3(TipoRegistroImportado.Dividendo, TipoDividendo: TipoDividendoEnum.Dividendo),
             "Juros Sobre Capital Próprio" or "JSCP" => new ClassificacaoB3(TipoRegistroImportado.Dividendo, TipoDividendo: TipoDividendoEnum.JSCP),
