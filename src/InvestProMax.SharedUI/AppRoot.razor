@@ -1,4 +1,5 @@
 @inject Api.IInvestProMaxApiClient ApiClient
+@inject Auth.IBiometricAuthService BiometricAuth
 
 @*
     Componente raiz comum aos dois heads (Web e MAUI) — cada um registra ESTE componente como
@@ -25,7 +26,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        await ApiClient.RestaurarSessaoAsync();
+        var biometriaDisponivel = await BiometricAuth.EstaDisponivelAsync();
+        if (!biometriaDisponivel)
+        {
+            await ApiClient.RestaurarSessaoAsync();
+        }
         _pronto = true;
     }
 }

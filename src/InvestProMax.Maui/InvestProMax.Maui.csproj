@@ -14,9 +14,15 @@
 
     <ApplicationTitle>Invest Pro Max</ApplicationTitle>
     <ApplicationId>com.investpromax.app</ApplicationId>
-    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
+    <ApplicationVersion>3</ApplicationVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0B1F17" />
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0B1F17" BaseSize="148,148" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Versão: mesmo aviso de sempre — sem SDK/rede neste ambiente pra confirmar contra o

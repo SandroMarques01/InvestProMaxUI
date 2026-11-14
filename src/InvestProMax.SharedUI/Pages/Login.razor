@@ -2,6 +2,8 @@
 @attribute [AllowAnonymous]
 @layout InvestProMax.SharedUI.Layout.LoginLayout
 @inject IInvestProMaxApiClient ApiClient
+@inject InvestProMax.SharedUI.Auth.IBiometricAuthService BiometricAuth
+@inject InvestProMax.SharedUI.Auth.ITokenStorage TokenStorage
 @inject NavigationManager Navegacao
 
 <main class="login-page">
@@ -21,8 +23,8 @@
     </div>
 
     <section class="card login-card">
-        <div class="logo" style="display: flex; justify-content: center; margin-bottom: 12px;">
-            <div class="logo-mark"><span /><span /><span /></div>
+        <div class="logo" style="justify-content: center; align-items: center; margin-bottom: 4px;">
+            <img src="_content/InvestProMax.SharedUI/images/logo-icon.svg" alt="InvestProMax" style="width: 28px; height: 28px; object-fit: contain;" />
             <strong style="margin-left: 8px;">InvestPro<span style="color: var(--primary);">Max</span></strong>
         </div>
 
@@ -67,6 +69,18 @@
                     <span>Entrar</span>
                 }
             </button>
+
+            @if (_biometriaDisponivel)
+            {
+                <button type="button"
+                        class="btn btn-secondary full-btn"
+                        style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; border-color: rgba(56, 224, 123, 0.35);"
+                        disabled="@_carregando"
+                        @onclick="() => EntrarComBiometriaAsync(silenciosoSeCancelado: false)">
+                    <Icon Name="fingerprint" Size="18" />
+                    <span>Entrar com digital ou facial</span>
+                </button>
+            }
         </EditForm>
 
         <small>Ao entrar, você concorda com os Termos de Uso e Privacidade.</small>
@@ -79,7 +93,22 @@
 
     private readonly ModeloLogin _modelo = new();
     private bool _carregando;
+    private bool _biometriaDisponivel;
     private string? _mensagemErro;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _biometriaDisponivel = await BiometricAuth.EstaDisponivelAsync();
+        if (_biometriaDisponivel)
+        {
+            var temCredenciais = await BiometricAuth.PossuiCredenciaisSalvasAsync();
+            var temRefreshToken = !string.IsNullOrWhiteSpace(await TokenStorage.ObterRefreshTokenAsync());
+            if (temCredenciais || temRefreshToken)
+            {
+                await EntrarComBiometriaAsync(silenciosoSeCancelado: true);
+            }
+        }
+    }
 
     private async Task EntrarAsync()
     {
@@ -88,6 +117,10 @@
         try
         {
             await ApiClient.LoginAsync(new LoginRequest(_modelo.NomeUsuario, _modelo.Senha));
+            if (_biometriaDisponivel)
+            {
+                await BiometricAuth.SalvarCredenciaisAsync(_modelo.NomeUsuario, _modelo.Senha);
+            }
             var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
             Navegacao.NavigateTo(destino, forceLoad: false);
         }
@@ -102,6 +135,67 @@
         finally
         {
             _carregando = false;
+        }
+    }
+
+    private async Task EntrarComBiometriaAsync(bool silenciosoSeCancelado)
+    {
+        var temCredenciais = await BiometricAuth.PossuiCredenciaisSalvasAsync();
+        var temRefreshToken = !string.IsNullOrWhiteSpace(await TokenStorage.ObterRefreshTokenAsync());
+
+        if (!temCredenciais && !temRefreshToken)
+        {
+            if (!silenciosoSeCancelado)
+            {
+                _mensagemErro = "Faça login com usuário e senha uma vez para ativar o acesso por digital ou reconhecimento facial neste aparelho.";
+            }
+            return;
+        }
+
+        _carregando = true;
+        _mensagemErro = null;
+        StateHasChanged();
+
+        try
+        {
+            var autenticado = await BiometricAuth.AutenticarAsync("Use sua digital ou reconhecimento facial para entrar no InvestProMax");
+            if (!autenticado)
+            {
+                return;
+            }
+
+            if (temRefreshToken && await ApiClient.RestaurarSessaoAsync())
+            {
+                var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
+                Navegacao.NavigateTo(destino, forceLoad: false);
+                return;
+            }
+
+            var credenciais = await BiometricAuth.ObterCredenciaisSalvasAsync();
+            if (credenciais is not null)
+            {
+                await ApiClient.LoginAsync(new LoginRequest(credenciais.NomeUsuario, credenciais.Senha));
+                var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
+                Navegacao.NavigateTo(destino, forceLoad: false);
+                return;
+            }
+
+            if (!silenciosoSeCancelado)
+            {
+                _mensagemErro = "Sessão expirada. Faça login com usuário e senha para reativar a biometria.";
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!silenciosoSeCancelado)
+            {
+                _mensagemErro = "Não foi possível entrar com biometria: " + ex.Message;
+            }
+        }
+        finally
+        {
+            _carregando = false;
+            StateHasChanged();
         }
     }
 

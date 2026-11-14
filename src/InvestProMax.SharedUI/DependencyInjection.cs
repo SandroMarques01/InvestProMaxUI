@@ -2,6 +2,7 @@ using InvestProMax.SharedUI.Api;
 using InvestProMax.SharedUI.Auth;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InvestProMax.SharedUI;
 
@@ -22,6 +23,7 @@ public static class DependencyInjection
     {
         services.AddScoped<AuthState>();
         services.AddScoped<AuthenticationStateProvider, InvestProMaxAuthStateProvider>();
+        services.TryAddScoped<IBiometricAuthService, NullBiometricAuthService>();
         services.AddAuthorizationCore();
         services.AddCascadingAuthenticationState();
 

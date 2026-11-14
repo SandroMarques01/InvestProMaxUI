@@ -195,18 +195,18 @@
 
             <nav class="mobile-nav">
                 <button type="button" class="mobile-search-trigger @(_buscaMobileAberta ? "active" : "")" @onclick="AlternarBuscaMobile" title="Buscar página">
-                    <Icon Name="search" />
+                    <Icon Name="search" Size="22" />
                     <span>Buscar</span>
                 </button>
                 @foreach (var item in ObterItensMenuFiltrados())
                 {
                     <NavLink href="@item.Href" Match="@(item.MatchAll ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="FecharBuscaMobile">
-                        <Icon Name="@item.Icone" />
+                        <Icon Name="@item.Icone" Size="22" />
                         <span>@item.TituloMobile</span>
                     </NavLink>
                 }
                 <button type="button" class="mobile-user-btn" @onclick="IrParaPerfilUsuario">
-                    <div class="avatar" style="width: 22px; height: 22px; font-size: 9px;">@ObterIniciais(context.User.Identity?.Name)</div>
+                    <div class="avatar" style="width: 24px; height: 24px; font-size: 10px;">@ObterIniciais(context.User.Identity?.Name)</div>
                     <span>Conta</span>
                 </button>
             </nav>

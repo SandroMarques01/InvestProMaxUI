@@ -29,17 +29,11 @@ public static class MauiProgram
         builder.Services.AddMauiBlazorWebView();
         builder.Services.AddSharedUI();
         builder.Services.AddSingleton<ITokenStorage, SecureStorageTokenStorage>();
+        builder.Services.AddSingleton<IBiometricAuthService, MauiBiometricAuthService>();
 
         builder.Services.AddHttpClient<IInvestProMaxApiClient, InvestProMaxApiClient>(cliente =>
         {
-            // ASSUNÇÃO SINALIZADA: emulador Android usa 10.0.2.2 pra alcançar o localhost da
-            // máquina host; iOS/MacCatalyst (e dispositivo físico Android) usam o IP real da
-            // máquina rodando a Api na rede local. DeviceInfo.Platform decide em tempo de
-            // execução; ajuste os dois valores abaixo pro seu ambiente antes de rodar.
-            var baseUrl = DeviceInfo.Platform == DevicePlatform.Android
-                ? "https://10.0.2.2:7001/"
-                : "https://localhost:7001/";
-            cliente.BaseAddress = new Uri(baseUrl);
+            cliente.BaseAddress = new Uri("https://investpromax-api-902552407127.us-central1.run.app/");
         });
 
 #if DEBUG
