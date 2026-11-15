@@ -8,12 +8,17 @@ namespace InvestProMax.Infrastructure.Repositories;
 public class ContaRepository : IContaRepository
 {
     private readonly InvestProMaxDbContext _db;
-    private readonly IDbContextFactory<SupabaseDbContext>? _supabaseFactory;
+    private readonly SupabaseDbContext? _supabaseDb;
+    private readonly LocalDbContext? _localDb;
 
-    public ContaRepository(InvestProMaxDbContext db, IDbContextFactory<SupabaseDbContext>? supabaseFactory = null)
+    public ContaRepository(
+        InvestProMaxDbContext db,
+        SupabaseDbContext? supabaseDb = null,
+        LocalDbContext? localDb = null)
     {
         _db = db;
-        _supabaseFactory = supabaseFactory;
+        _supabaseDb = supabaseDb;
+        _localDb = localDb;
     }
 
     public Task<Conta?> ObterPorIdAsync(Guid id, Guid usuarioId, CancellationToken ct = default) =>
@@ -60,12 +65,16 @@ public class ContaRepository : IContaRepository
     {
         await ZerarContasNoContextoAsync(_db, usuarioId, ct);
 
-        if (_supabaseFactory is not null)
+        foreach (var secundario in new InvestProMaxDbContext?[] { _supabaseDb, _localDb })
         {
+            if (secundario is null || ReferenceEquals(secundario, _db))
+            {
+                continue;
+            }
+
             try
             {
-                await using var supabase = await _supabaseFactory.CreateDbContextAsync(ct);
-                await ZerarContasNoContextoAsync(supabase, usuarioId, ct);
+                await ZerarContasNoContextoAsync(secundario, usuarioId, ct);
             }
             catch
             {
@@ -77,10 +86,37 @@ public class ContaRepository : IContaRepository
     private static async Task ZerarContasNoContextoAsync(InvestProMaxDbContext db, Guid usuarioId, CancellationToken ct)
     {
         var contaIds = await db.Contas.Where(c => c.UsuarioId == usuarioId).Select(c => c.Id).ToListAsync(ct);
-        var faturaIds = await db.Faturas.Where(f => contaIds.Contains(f.ContaId)).Select(f => f.Id).ToListAsync(ct);
+        var faturaIds = contaIds.Count > 0
+            ? await db.Faturas.Where(f => contaIds.Contains(f.ContaId)).Select(f => f.Id).ToListAsync(ct)
+            : [];
 
-        await db.Pagamentos.Where(p => faturaIds.Contains(p.FaturaId)).ExecuteDeleteAsync(ct);
-        await db.Faturas.Where(f => contaIds.Contains(f.ContaId)).ExecuteDeleteAsync(ct);
-        await db.Contas.Where(c => c.UsuarioId == usuarioId).ExecuteDeleteAsync(ct);
+        if (db.Database.IsRelational())
+        {
+            if (faturaIds.Count > 0)
+            {
+                await db.Pagamentos.Where(p => faturaIds.Contains(p.FaturaId)).ExecuteDeleteAsync(ct);
+            }
+
+            if (contaIds.Count > 0)
+            {
+                await db.Faturas.Where(f => contaIds.Contains(f.ContaId)).ExecuteDeleteAsync(ct);
+            }
+
+            await db.Contas.Where(c => c.UsuarioId == usuarioId).ExecuteDeleteAsync(ct);
+            return;
+        }
+
+        if (faturaIds.Count > 0)
+        {
+            db.Pagamentos.RemoveRange(await db.Pagamentos.Where(p => faturaIds.Contains(p.FaturaId)).ToListAsync(ct));
+        }
+
+        if (contaIds.Count > 0)
+        {
+            db.Faturas.RemoveRange(await db.Faturas.Where(f => contaIds.Contains(f.ContaId)).ToListAsync(ct));
+        }
+
+        db.Contas.RemoveRange(await db.Contas.Where(c => c.UsuarioId == usuarioId).ToListAsync(ct));
+        await db.SaveChangesAsync(ct);
     }
 }

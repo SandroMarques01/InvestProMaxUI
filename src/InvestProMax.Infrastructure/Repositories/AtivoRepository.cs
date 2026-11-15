@@ -9,12 +9,17 @@ namespace InvestProMax.Infrastructure.Repositories;
 public class AtivoRepository : IAtivoRepository
 {
     private readonly InvestProMaxDbContext _db;
-    private readonly IDbContextFactory<SupabaseDbContext>? _supabaseFactory;
+    private readonly SupabaseDbContext? _supabaseDb;
+    private readonly LocalDbContext? _localDb;
 
-    public AtivoRepository(InvestProMaxDbContext db, IDbContextFactory<SupabaseDbContext>? supabaseFactory = null)
+    public AtivoRepository(
+        InvestProMaxDbContext db,
+        SupabaseDbContext? supabaseDb = null,
+        LocalDbContext? localDb = null)
     {
         _db = db;
-        _supabaseFactory = supabaseFactory;
+        _supabaseDb = supabaseDb;
+        _localDb = localDb;
     }
 
     private IQueryable<Ativo> ComNavegacoes() => _db.Ativos.Include(a => a.HistoricoInventario);
@@ -67,12 +72,16 @@ public class AtivoRepository : IAtivoRepository
     {
         await ZerarPatrimonioNoContextoAsync(_db, usuarioId, ct);
 
-        if (_supabaseFactory is not null)
+        foreach (var secundario in new InvestProMaxDbContext?[] { _supabaseDb, _localDb })
         {
+            if (secundario is null || ReferenceEquals(secundario, _db))
+            {
+                continue;
+            }
+
             try
             {
-                await using var supabase = await _supabaseFactory.CreateDbContextAsync(ct);
-                await ZerarPatrimonioNoContextoAsync(supabase, usuarioId, ct);
+                await ZerarPatrimonioNoContextoAsync(secundario, usuarioId, ct);
             }
             catch
             {
@@ -85,7 +94,23 @@ public class AtivoRepository : IAtivoRepository
     {
         var ativoIds = await db.Ativos.Where(a => a.UsuarioId == usuarioId).Select(a => a.Id).ToListAsync(ct);
 
-        await db.Inventarios.Where(i => ativoIds.Contains(i.AtivoId)).ExecuteDeleteAsync(ct);
-        await db.Ativos.Where(a => a.UsuarioId == usuarioId).ExecuteDeleteAsync(ct);
+        if (db.Database.IsRelational())
+        {
+            if (ativoIds.Count > 0)
+            {
+                await db.Inventarios.Where(i => ativoIds.Contains(i.AtivoId)).ExecuteDeleteAsync(ct);
+            }
+
+            await db.Ativos.Where(a => a.UsuarioId == usuarioId).ExecuteDeleteAsync(ct);
+            return;
+        }
+
+        if (ativoIds.Count > 0)
+        {
+            db.Inventarios.RemoveRange(await db.Inventarios.Where(i => ativoIds.Contains(i.AtivoId)).ToListAsync(ct));
+        }
+
+        db.Ativos.RemoveRange(await db.Ativos.Where(a => a.UsuarioId == usuarioId).ToListAsync(ct));
+        await db.SaveChangesAsync(ct);
     }
 }

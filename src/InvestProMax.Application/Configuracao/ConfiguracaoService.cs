@@ -26,22 +26,42 @@ public sealed class ConfiguracaoService : IConfiguracaoService
     private readonly IAtivoRepository _ativoRepository;
     private readonly IContaRepository _contaRepository;
     private readonly IUsuarioLogado _usuarioLogado;
+    private readonly IMongoBackupService? _mongoBackupService;
 
     public ConfiguracaoService(
-        IPapelRepository papelRepository, IAtivoRepository ativoRepository, IContaRepository contaRepository, IUsuarioLogado usuarioLogado)
+        IPapelRepository papelRepository,
+        IAtivoRepository ativoRepository,
+        IContaRepository contaRepository,
+        IUsuarioLogado usuarioLogado,
+        IMongoBackupService? mongoBackupService = null)
     {
         _papelRepository = papelRepository;
         _ativoRepository = ativoRepository;
         _contaRepository = contaRepository;
         _usuarioLogado = usuarioLogado;
+        _mongoBackupService = mongoBackupService;
     }
 
-    public Task ZerarCarteiraAsync(CancellationToken ct = default) =>
-        _papelRepository.ZerarCarteiraDoUsuarioAsync(_usuarioLogado.UsuarioId, ct);
+    public async Task ZerarCarteiraAsync(CancellationToken ct = default)
+    {
+        var usuarioId = _usuarioLogado.UsuarioId;
+
+        if (_mongoBackupService is not null)
+        {
+            await _mongoBackupService.ZerarCarteiraDoUsuarioAsync(usuarioId, ct);
+        }
+
+        await _papelRepository.ZerarCarteiraDoUsuarioAsync(usuarioId, ct);
+    }
 
     public async Task ZerarBaseAsync(CancellationToken ct = default)
     {
         var usuarioId = _usuarioLogado.UsuarioId;
+
+        if (_mongoBackupService is not null)
+        {
+            await _mongoBackupService.ZerarBaseDoUsuarioAsync(usuarioId, ct);
+        }
 
         await _papelRepository.ZerarCarteiraDoUsuarioAsync(usuarioId, ct);
         await _ativoRepository.ZerarPatrimonioDoUsuarioAsync(usuarioId, ct);

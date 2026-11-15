@@ -9,12 +9,17 @@ namespace InvestProMax.Infrastructure.Repositories;
 public class PapelRepository : IPapelRepository
 {
     private readonly InvestProMaxDbContext _db;
-    private readonly IDbContextFactory<SupabaseDbContext>? _supabaseFactory;
+    private readonly SupabaseDbContext? _supabaseDb;
+    private readonly LocalDbContext? _localDb;
 
-    public PapelRepository(InvestProMaxDbContext db, IDbContextFactory<SupabaseDbContext>? supabaseFactory = null)
+    public PapelRepository(
+        InvestProMaxDbContext db,
+        SupabaseDbContext? supabaseDb = null,
+        LocalDbContext? localDb = null)
     {
         _db = db;
-        _supabaseFactory = supabaseFactory;
+        _supabaseDb = supabaseDb;
+        _localDb = localDb;
     }
 
     private IQueryable<Papel> ComNavegacoes() => _db.Papeis
@@ -83,12 +88,16 @@ public class PapelRepository : IPapelRepository
         // (evita cascata acidental em qualquer outro fluxo que não seja este).
         await ZerarCarteiraNoContextoAsync(_db, usuarioId, ct);
 
-        if (_supabaseFactory is not null)
+        foreach (var secundario in new InvestProMaxDbContext?[] { _supabaseDb, _localDb })
         {
+            if (secundario is null || ReferenceEquals(secundario, _db))
+            {
+                continue;
+            }
+
             try
             {
-                await using var supabase = await _supabaseFactory.CreateDbContextAsync(ct);
-                await ZerarCarteiraNoContextoAsync(supabase, usuarioId, ct);
+                await ZerarCarteiraNoContextoAsync(secundario, usuarioId, ct);
             }
             catch
             {
@@ -99,12 +108,31 @@ public class PapelRepository : IPapelRepository
 
     private static async Task ZerarCarteiraNoContextoAsync(InvestProMaxDbContext db, Guid usuarioId, CancellationToken ct)
     {
-        var papeis = await db.Papeis.Where(p => p.UsuarioId == usuarioId).Select(p => p.Id).ToListAsync(ct);
+        var papelIds = await db.Papeis.Where(p => p.UsuarioId == usuarioId).Select(p => p.Id).ToListAsync(ct);
 
-        await db.Transacoes.Where(t => papeis.Contains(t.PapelId)).ExecuteDeleteAsync(ct);
-        await db.Dividendos.Where(d => papeis.Contains(d.PapelId)).ExecuteDeleteAsync(ct);
-        await db.MovimentosAluguel.Where(m => papeis.Contains(m.PapelId)).ExecuteDeleteAsync(ct);
-        await db.PapelSegmentos.Where(ps => papeis.Contains(ps.PapelId)).ExecuteDeleteAsync(ct);
-        await db.Papeis.Where(p => p.UsuarioId == usuarioId).ExecuteDeleteAsync(ct);
+        if (db.Database.IsRelational())
+        {
+            if (papelIds.Count > 0)
+            {
+                await db.Transacoes.Where(t => papelIds.Contains(t.PapelId)).ExecuteDeleteAsync(ct);
+                await db.Dividendos.Where(d => papelIds.Contains(d.PapelId)).ExecuteDeleteAsync(ct);
+                await db.MovimentosAluguel.Where(m => papelIds.Contains(m.PapelId)).ExecuteDeleteAsync(ct);
+                await db.PapelSegmentos.Where(ps => papelIds.Contains(ps.PapelId)).ExecuteDeleteAsync(ct);
+            }
+
+            await db.Papeis.Where(p => p.UsuarioId == usuarioId).ExecuteDeleteAsync(ct);
+            return;
+        }
+
+        if (papelIds.Count > 0)
+        {
+            db.Transacoes.RemoveRange(await db.Transacoes.Where(t => papelIds.Contains(t.PapelId)).ToListAsync(ct));
+            db.Dividendos.RemoveRange(await db.Dividendos.Where(d => papelIds.Contains(d.PapelId)).ToListAsync(ct));
+            db.MovimentosAluguel.RemoveRange(await db.MovimentosAluguel.Where(m => papelIds.Contains(m.PapelId)).ToListAsync(ct));
+            db.PapelSegmentos.RemoveRange(await db.PapelSegmentos.Where(ps => papelIds.Contains(ps.PapelId)).ToListAsync(ct));
+        }
+
+        db.Papeis.RemoveRange(await db.Papeis.Where(p => p.UsuarioId == usuarioId).ToListAsync(ct));
+        await db.SaveChangesAsync(ct);
     }
 }

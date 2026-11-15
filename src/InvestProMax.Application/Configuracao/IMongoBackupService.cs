@@ -8,5 +8,7 @@ public interface IMongoBackupService
         IReadOnlyList<BackupTransacaoEventoItem> transacoes,
         IReadOnlyList<BackupDividendoEventoItem> dividendos,
         CancellationToken ct = default);
+    Task ZerarCarteiraDoUsuarioAsync(Guid usuarioId, CancellationToken ct = default);
+    Task ZerarBaseDoUsuarioAsync(Guid usuarioId, CancellationToken ct = default);
 }
 
