@@ -29,7 +29,7 @@ public sealed class AuthService : IAuthService
 
     public async Task<AutenticacaoResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
-        var usuario = await _usuarioRepository.ObterPorNomeUsuarioAsync(request.NomeUsuario, ct);
+        var usuario = await _usuarioRepository.ObterPorNomeUsuarioAsync(request.NomeUsuario.Trim(), ct);
 
         if (usuario is null || !usuario.Ativo || !_passwordHasher.Verificar(request.Senha, usuario.SenhaHash))
         {

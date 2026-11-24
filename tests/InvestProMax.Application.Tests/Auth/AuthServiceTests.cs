@@ -230,4 +230,19 @@ public class AuthServiceTests
         await acao.Should().ThrowAsync<RegraDeNegocioException>().WithMessage("*E-mail*");
         _usuarioRepository.Verify(r => r.AdicionarAsync(It.IsAny<Usuario>(), default), Times.Never);
     }
+
+    [Fact]
+    public async Task Login_remove_espacos_nas_extremidades_do_nome_de_usuario()
+    {
+        var usuario = UsuarioValido();
+        _usuarioRepository.Setup(r => r.ObterPorNomeUsuarioAsync("joao", default)).ReturnsAsync(usuario);
+        _passwordHasher.Setup(p => p.Verificar("senha-correta", usuario.SenhaHash)).Returns(true);
+        _tokenService.Setup(t => t.GerarAccessToken(usuario))
+            .Returns(new TokenGerado("access-token-falso", DateTime.UtcNow.AddMinutes(20)));
+
+        var resposta = await _sut.LoginAsync(new LoginRequest("  joao  ", "senha-correta"));
+
+        resposta.AccessToken.Should().Be("access-token-falso");
+        _usuarioRepository.Verify(r => r.ObterPorNomeUsuarioAsync("joao", default), Times.Once);
+    }
 }

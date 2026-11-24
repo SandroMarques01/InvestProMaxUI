@@ -43,7 +43,7 @@
             
             <div class="field" style="margin-bottom: 14px;">
                 <span>Usuário ou E-mail</span>
-                <InputText id="usuario" @bind-Value="_modelo.NomeUsuario" disabled="@_carregando" placeholder="admin" />
+                <InputText id="usuario" @bind-Value="_modelo.NomeUsuario" disabled="@_carregando" placeholder="admin" autocapitalize="none" autocorrect="off" autocomplete="username" />
                 <ValidationMessage For="@(() => _modelo.NomeUsuario)" />
             </div>
 
@@ -116,10 +116,11 @@
         _mensagemErro = null;
         try
         {
-            await ApiClient.LoginAsync(new LoginRequest(_modelo.NomeUsuario, _modelo.Senha));
+            var nomeUsuario = _modelo.NomeUsuario.Trim();
+            await ApiClient.LoginAsync(new LoginRequest(nomeUsuario, _modelo.Senha));
             if (_biometriaDisponivel)
             {
-                await BiometricAuth.SalvarCredenciaisAsync(_modelo.NomeUsuario, _modelo.Senha);
+                await BiometricAuth.SalvarCredenciaisAsync(nomeUsuario, _modelo.Senha);
             }
             var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
             Navegacao.NavigateTo(destino, forceLoad: false);
