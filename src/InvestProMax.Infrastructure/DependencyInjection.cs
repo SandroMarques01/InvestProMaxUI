@@ -44,7 +44,7 @@ public static class DependencyInjection
 
                 services.AddDbContext<SupabaseDbContext>((sp, options) =>
                 {
-                    options.UseNpgsql(normalizedSupabase);
+                    options.UseNpgsql(normalizedSupabase, ConfigurarNpgsql);
                     options.AddInterceptors(
                         sp.GetRequiredService<ConexaoFalhaInterceptor>(),
                         sp.GetRequiredService<ReplicaSaveChangesInterceptor>());
@@ -64,7 +64,7 @@ public static class DependencyInjection
             {
                 // Modo Produção / Docker (sem LocalDB)
                 services.AddDbContext<SupabaseDbContext>(options =>
-                    options.UseNpgsql(normalizedSupabase));
+                    options.UseNpgsql(normalizedSupabase, ConfigurarNpgsql));
 
                 services.AddScoped<InvestProMaxDbContext>(sp =>
                     sp.GetRequiredService<SupabaseDbContext>());
@@ -74,7 +74,7 @@ public static class DependencyInjection
         {
             var normalized = NormalizePostgresConnectionString(connectionString!);
             services.AddDbContext<SupabaseDbContext>(options =>
-                options.UseNpgsql(normalized));
+                options.UseNpgsql(normalized, ConfigurarNpgsql));
             services.AddScoped<InvestProMaxDbContext>(sp =>
                 sp.GetRequiredService<SupabaseDbContext>());
         }
@@ -192,9 +192,38 @@ public static class DependencyInjection
                     dbName = trimmed;
             }
 
-            return $"Host={host};Port={port};Database={dbName};Username={user};Password={pass};Ssl Mode=Require;";
+            return ComParametrosResilienciaNpgsql(
+                $"Host={host};Port={port};Database={dbName};Username={user};Password={pass};Ssl Mode=Require;");
         }
 
-        return raw;
+        return ComParametrosResilienciaNpgsql(raw);
+    }
+
+    private static string ComParametrosResilienciaNpgsql(string connectionString)
+    {
+        var builder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+        if (builder.KeepAlive == 0)
+        {
+            builder.KeepAlive = 30;
+        }
+        if (builder.ConnectionIdleLifetime > 60)
+        {
+            builder.ConnectionIdleLifetime = 60;
+        }
+        if (builder.Timeout == 15)
+        {
+            builder.Timeout = 30;
+        }
+        return builder.ConnectionString;
+    }
+
+    private static void ConfigurarNpgsql(
+        Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.NpgsqlDbContextOptionsBuilder npgsql)
+    {
+        npgsql.EnableRetryOnFailure(
+            maxRetryCount: 3,
+            maxRetryDelay: TimeSpan.FromSeconds(5),
+            errorCodesToAdd: null);
+        npgsql.CommandTimeout(60);
     }
 }

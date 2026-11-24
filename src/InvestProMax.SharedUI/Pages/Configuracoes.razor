@@ -32,6 +32,15 @@
     </button>
 </div>
 
+@if (_processando)
+{
+    <div class="overlay modal-overlay" style="z-index: 1200;">
+        <div class="modal" style="max-width: 440px;">
+            <LoadingState Mensagem="Processando operação..." Subtitulo="Aguarde enquanto importamos e salvamos os dados." />
+        </div>
+    </div>
+}
+
 @if (_mensagemErro is not null)
 {
     <div class="alerta-erro">@_mensagemErro</div>

@@ -310,13 +310,14 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
 
     private async Task<T> EnviarMultipartAsync<T>(string url, Stream arquivo, string nomeArquivo, CancellationToken ct)
     {
+        arquivo.Position = 0;
+        using var buffer = new MemoryStream();
+        await arquivo.CopyToAsync(buffer, ct);
+        var bytes = buffer.ToArray();
+
         using var resposta = await EnviarAsync(() =>
         {
-            // A stream precisa ser rebobinada aqui porque este delegate pode rodar duas vezes
-            // (uma retentativa após renovar o token consome a stream de novo) — exige que
-            // `arquivo` seja seekable (é o caso de um MemoryStream vindo de InputFile do Blazor).
-            arquivo.Position = 0;
-            var multipart = new MultipartFormDataContent { { new StreamContent(arquivo), "arquivo", nomeArquivo } };
+            var multipart = new MultipartFormDataContent { { new ByteArrayContent(bytes), "arquivo", nomeArquivo } };
             return new HttpRequestMessage(HttpMethod.Post, url) { Content = multipart };
         }, ct);
         return (await resposta.Content.ReadFromJsonAsync<T>(JsonOptions, ct))!;
