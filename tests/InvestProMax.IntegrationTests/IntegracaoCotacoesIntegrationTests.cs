@@ -22,6 +22,7 @@ public class IntegracaoCotacoesIntegrationTests : IsolamentoTestBase
     private sealed class FakeDisparador : IDisparadorAtualizacaoCotacoes
     {
         public bool EstaConfigurado { get; set; } = true;
+        public bool EstaConfiguradoPorAtivo { get; set; }
         public int Chamadas { get; private set; }
 
         public Task DispararAsync(DateTime solicitadoEm, CancellationToken ct = default)
@@ -29,6 +30,9 @@ public class IntegracaoCotacoesIntegrationTests : IsolamentoTestBase
             Chamadas++;
             return Task.CompletedTask;
         }
+
+        public Task<CotacaoAtivoWebhookResult?> DispararPorAtivoAsync(string codigo, CancellationToken ct = default) =>
+            Task.FromResult<CotacaoAtivoWebhookResult?>(null);
     }
 
     private (Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> FabricaConfigurada, Guid UsuarioId, FakeDisparador Fake)

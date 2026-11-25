@@ -11,7 +11,14 @@ namespace InvestProMax.SharedUI.Api;
 public interface IInvestProMaxApiClient
 {
     // Auth
+    Task<AuthConfigPublicaResponse> ObterConfigPublicaAuthAsync(CancellationToken ct = default);
     Task<AutenticacaoResponse> LoginAsync(LoginRequest request, CancellationToken ct = default);
+    Task<StatusCadastroResponse> RegistrarAsync(RegistrarUsuarioRequest request, CancellationToken ct = default);
+    Task<StatusCadastroResponse> ObterStatusCadastroAsync(string codigo, CancellationToken ct = default);
+    Task<StatusCadastroResponse> TrocarCodigoGoogleAsync(string codigo, CancellationToken ct = default);
+    Task<IReadOnlyList<UsuarioResponse>> ListarUsuariosAsync(CancellationToken ct = default);
+    Task<UsuarioResponse> AprovarUsuarioAsync(Guid id, CancellationToken ct = default);
+    Task<UsuarioResponse> RejeitarUsuarioAsync(Guid id, CancellationToken ct = default);
     Task<UsuarioResponse> CriarUsuarioAsync(CriarUsuarioRequest request, CancellationToken ct = default);
     Task AlterarSenhaAsync(AlterarSenhaRequest request, CancellationToken ct = default);
     Task LogoutAsync(CancellationToken ct = default);

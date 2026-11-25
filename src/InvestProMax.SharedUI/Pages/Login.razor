@@ -1,6 +1,7 @@
 @page "/login"
 @attribute [AllowAnonymous]
 @layout InvestProMax.SharedUI.Layout.LoginLayout
+@implements IDisposable
 @inject IInvestProMaxApiClient ApiClient
 @inject InvestProMax.SharedUI.Auth.IBiometricAuthService BiometricAuth
 @inject InvestProMax.SharedUI.Auth.ITokenStorage TokenStorage
@@ -28,60 +29,255 @@
             <strong style="margin-left: 8px;">InvestPro<span style="color: var(--primary);">Max</span></strong>
         </div>
 
-        <div>
-            <h1>Bem-vindo de volta</h1>
-            <p>Entre para acessar seu painel financeiro.</p>
-        </div>
-
-        @if (_mensagemErro is not null)
+        @if (_statusCadastro is not null)
         {
-            <div class="alerta-erro">@_mensagemErro</div>
+            <div>
+                <h1>Acompanhamento de cadastro</h1>
+                <p>@_statusCadastro.Mensagem</p>
+            </div>
+
+            @if (_mensagemErro is not null)
+            {
+                <div class="alerta-erro">@_mensagemErro</div>
+            }
+
+            <div style="display: flex; flex-direction: column; gap: 12px; margin: 10px 0 14px;">
+                <div style="padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-alt);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <strong style="font-size: 13px;">1. Validação via Telegram</strong>
+                        @if (_statusCadastro.StatusCadastro == StatusCadastroUsuario.PendenteTelegram)
+                        {
+                            <span class="badge">Pendente</span>
+                        }
+                        else if (_statusCadastro.StatusCadastro is StatusCadastroUsuario.PendenteAprovacaoAdmin or StatusCadastroUsuario.Aprovado)
+                        {
+                            <span class="badge badge-positive">Validado</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-negative">Encerrado</span>
+                        }
+                    </div>
+
+                    @if (_statusCadastro.StatusCadastro == StatusCadastroUsuario.PendenteTelegram && !string.IsNullOrWhiteSpace(_statusCadastro.LinkTelegramBot))
+                    {
+                        <p style="font-size: 12px; color: var(--muted); margin: 0 0 10px;">
+                            Clique abaixo para abrir o bot oficial <strong>@@@_configAuth.TelegramBotUsername</strong> no Telegram e clique em <strong>Começar / Start</strong> para vincular sua conta.
+                        </p>
+                        <a href="@_statusCadastro.LinkTelegramBot"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="btn btn-primary full-btn"
+                           style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <span>Abrir Telegram e Validar</span>
+                        </a>
+                        @if (!string.IsNullOrWhiteSpace(_statusCadastro.CodigoValidacaoTelegram))
+                        {
+                            <div style="margin-top: 8px; font-size: 11px; color: var(--muted); word-break: break-all;">
+                                Caso prefira enviar manualmente no bot: <code>/start @_statusCadastro.CodigoValidacaoTelegram</code>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <small style="color: var(--muted);">Seu Telegram foi vinculado ao cadastro.</small>
+                    }
+                </div>
+
+                <div style="padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-alt);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <strong style="font-size: 13px;">2. Aprovação do usuário Admin</strong>
+                        @if (_statusCadastro.StatusCadastro == StatusCadastroUsuario.Aprovado)
+                        {
+                            <span class="badge badge-positive">Aprovado</span>
+                        }
+                        else if (_statusCadastro.StatusCadastro == StatusCadastroUsuario.Rejeitado)
+                        {
+                            <span class="badge badge-negative">Recusado</span>
+                        }
+                        else if (_statusCadastro.StatusCadastro == StatusCadastroUsuario.PendenteAprovacaoAdmin)
+                        {
+                            <span class="badge">Aguardando Admin</span>
+                        }
+                        else
+                        {
+                            <span class="badge">Próxima etapa</span>
+                        }
+                    </div>
+
+                    @if (_statusCadastro.StatusCadastro == StatusCadastroUsuario.Aprovado)
+                    {
+                        <p style="font-size: 12px; color: var(--muted); margin: 0;">
+                            Acesso liberado! Você já pode entrar na plataforma usando suas credenciais ou sua conta Google.
+                        </p>
+                    }
+                    else if (_statusCadastro.StatusCadastro == StatusCadastroUsuario.Rejeitado)
+                    {
+                        <p style="font-size: 12px; color: var(--danger); margin: 0;">
+                            Esta solicitação não foi aprovada pelo administrador.
+                        </p>
+                    }
+                    else
+                    {
+                        <small style="color: var(--muted);">
+                            Após validar o Telegram, o usuário <strong>Admin</strong> receberá um aviso e liberará seu acesso. Esta tela atualiza automaticamente.
+                        </small>
+                    }
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                @if (_statusCadastro.StatusCadastro is StatusCadastroUsuario.PendenteTelegram or StatusCadastroUsuario.PendenteAprovacaoAdmin
+                    && !string.IsNullOrWhiteSpace(_statusCadastro.CodigoValidacaoTelegram))
+                {
+                    <button type="button" class="btn btn-secondary full-btn" @onclick="ConsultarStatusAgoraAsync" disabled="@_carregando">
+                        @(_carregando ? "Consultando..." : "Atualizar status agora")
+                    </button>
+                }
+
+                <button type="button" class="btn @(_statusCadastro.StatusCadastro == StatusCadastroUsuario.Aprovado ? "btn-primary" : "btn-secondary") full-btn" @onclick="VoltarParaLogin">
+                    @(_statusCadastro.StatusCadastro == StatusCadastroUsuario.Aprovado ? "Ir para o login e entrar" : "Voltar para o login")
+                </button>
+            </div>
         }
-
-        <EditForm Model="_modelo" OnValidSubmit="EntrarAsync">
-            <DataAnnotationsValidator />
-            
-            <div class="field" style="margin-bottom: 14px;">
-                <span>Usuário ou E-mail</span>
-                <InputText id="usuario" @bind-Value="_modelo.NomeUsuario" disabled="@_carregando" placeholder="admin" autocapitalize="none" autocorrect="off" autocomplete="username" />
-                <ValidationMessage For="@(() => _modelo.NomeUsuario)" />
+        else
+        {
+            <div>
+                <h1>@(_modo == "login" ? "Bem-vindo de volta" : "Criar sua conta")</h1>
+                <p>@(_modo == "login" ? "Entre para acessar seu painel financeiro." : "Cadastre-se e valide via Telegram + aprovação do Admin.")</p>
             </div>
 
-            <div class="field" style="margin-bottom: 16px;">
-                <span>Senha</span>
-                <InputText id="senha" type="password" @bind-Value="_modelo.Senha" disabled="@_carregando" placeholder="••••••••" />
-                <ValidationMessage For="@(() => _modelo.Senha)" />
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 10px; background: var(--surface-alt); border: 1px solid var(--border); margin-bottom: 12px;">
+                <button type="button"
+                        class="btn @(_modo == "login" ? "btn-primary" : "btn-secondary")"
+                        style="padding: 8px 10px; font-size: 12px;"
+                        disabled="@_carregando"
+                        @onclick='() => SelecionarModo("login")'>
+                    Entrar
+                </button>
+                <button type="button"
+                        class="btn @(_modo == "registrar" ? "btn-primary" : "btn-secondary")"
+                        style="padding: 8px 10px; font-size: 12px;"
+                        disabled="@_carregando"
+                        @onclick='() => SelecionarModo("registrar")'>
+                    Criar conta
+                </button>
             </div>
 
-            <div class="login-options" style="margin-bottom: 18px;">
-                <label>
-                    <input type="checkbox" checked /> Lembrar de mim
-                </label>
-            </div>
+            @if (_mensagemErro is not null)
+            {
+                <div class="alerta-erro">@_mensagemErro</div>
+            }
 
-            <button type="submit" class="btn btn-primary full-btn" disabled="@_carregando">
-                @if (_carregando)
-                {
-                    <span>Entrando...</span>
-                }
-                else
-                {
-                    <span>Entrar</span>
-                }
+            <button type="button"
+                    class="btn btn-secondary full-btn"
+                    style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px;"
+                    disabled="@_carregando"
+                    @onclick="IniciarLoginGoogle">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z" />
+                    <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z" />
+                </svg>
+                <span>Continuar com Google</span>
             </button>
 
-            @if (_biometriaDisponivel)
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: var(--muted); font-size: 11px;">
+                <span style="flex: 1; height: 1px; background: var(--border);"></span>
+                <span>ou com usuário e senha</span>
+                <span style="flex: 1; height: 1px; background: var(--border);"></span>
+            </div>
+
+            @if (_modo == "login")
             {
-                <button type="button"
-                        class="btn btn-secondary full-btn"
-                        style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; border-color: rgba(56, 224, 123, 0.35);"
-                        disabled="@_carregando"
-                        @onclick="() => EntrarComBiometriaAsync(silenciosoSeCancelado: false)">
-                    <Icon Name="fingerprint" Size="18" />
-                    <span>Entrar com digital ou facial</span>
-                </button>
+                <EditForm Model="_modelo" OnValidSubmit="EntrarAsync">
+                    <DataAnnotationsValidator />
+
+                    <div class="field" style="margin-bottom: 14px;">
+                        <span>Usuário ou E-mail</span>
+                        <InputText id="usuario" @bind-Value="_modelo.NomeUsuario" disabled="@_carregando" placeholder="admin" autocapitalize="none" autocorrect="off" autocomplete="username" />
+                        <ValidationMessage For="@(() => _modelo.NomeUsuario)" />
+                    </div>
+
+                    <div class="field" style="margin-bottom: 16px;">
+                        <span>Senha</span>
+                        <InputText id="senha" type="password" @bind-Value="_modelo.Senha" disabled="@_carregando" placeholder="••••••••" />
+                        <ValidationMessage For="@(() => _modelo.Senha)" />
+                    </div>
+
+                    <div class="login-options" style="margin-bottom: 18px;">
+                        <label>
+                            <input type="checkbox" checked /> Lembrar de mim
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary full-btn" disabled="@_carregando">
+                        @if (_carregando)
+                        {
+                            <span>Entrando...</span>
+                        }
+                        else
+                        {
+                            <span>Entrar</span>
+                        }
+                    </button>
+
+                    @if (_biometriaDisponivel)
+                    {
+                        <button type="button"
+                                class="btn btn-secondary full-btn"
+                                style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; border-color: rgba(56, 224, 123, 0.35);"
+                                disabled="@_carregando"
+                                @onclick="() => EntrarComBiometriaAsync(silenciosoSeCancelado: false)">
+                            <Icon Name="fingerprint" Size="18" />
+                            <span>Entrar com digital ou facial</span>
+                        </button>
+                    }
+                </EditForm>
             }
-        </EditForm>
+            else
+            {
+                <EditForm Model="_modeloRegistro" OnValidSubmit="RegistrarAsync">
+                    <DataAnnotationsValidator />
+
+                    <div class="field" style="margin-bottom: 12px;">
+                        <span>Nome completo</span>
+                        <InputText @bind-Value="_modeloRegistro.Nome" disabled="@_carregando" placeholder="Seu nome" />
+                        <ValidationMessage For="@(() => _modeloRegistro.Nome)" />
+                    </div>
+
+                    <div class="field" style="margin-bottom: 12px;">
+                        <span>E-mail</span>
+                        <InputText type="email" @bind-Value="_modeloRegistro.Email" disabled="@_carregando" placeholder="voce@exemplo.com" autocapitalize="none" autocorrect="off" />
+                        <ValidationMessage For="@(() => _modeloRegistro.Email)" />
+                    </div>
+
+                    <div class="field" style="margin-bottom: 12px;">
+                        <span>Nome de usuário</span>
+                        <InputText @bind-Value="_modeloRegistro.NomeUsuario" disabled="@_carregando" placeholder="seu.usuario" autocapitalize="none" autocorrect="off" />
+                        <ValidationMessage For="@(() => _modeloRegistro.NomeUsuario)" />
+                    </div>
+
+                    <div class="field" style="margin-bottom: 16px;">
+                        <span>Senha</span>
+                        <InputText type="password" @bind-Value="_modeloRegistro.Senha" disabled="@_carregando" placeholder="Mínimo 8 caracteres" />
+                        <ValidationMessage For="@(() => _modeloRegistro.Senha)" />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary full-btn" disabled="@_carregando">
+                        @if (_carregando)
+                        {
+                            <span>Enviando solicitação...</span>
+                        }
+                        else
+                        {
+                            <span>Cadastrar e validar Telegram</span>
+                        }
+                    </button>
+                </EditForm>
+            }
+        }
 
         <small>Ao entrar, você concorda com os Termos de Uso e Privacidade.</small>
     </section>
@@ -91,15 +287,70 @@
     [SupplyParameterFromQuery(Name = "retorno")]
     private string? UrlRetorno { get; set; }
 
+    [SupplyParameterFromQuery(Name = "googleCodigo")]
+    private string? GoogleCodigo { get; set; }
+
+    [SupplyParameterFromQuery(Name = "erroGoogle")]
+    private string? ErroGoogle { get; set; }
+
     private readonly ModeloLogin _modelo = new();
+    private readonly ModeloRegistro _modeloRegistro = new();
+    private AuthConfigPublicaResponse _configAuth = new(false, "MarkX_InvestProMax_MarquesFC_bot");
+    private StatusCadastroResponse? _statusCadastro;
+    private string _modo = "login";
     private bool _carregando;
     private bool _biometriaDisponivel;
     private string? _mensagemErro;
+    private CancellationTokenSource? _pollingCts;
 
     protected override async Task OnInitializedAsync()
     {
+        try
+        {
+            _configAuth = await ApiClient.ObterConfigPublicaAuthAsync();
+        }
+        catch
+        {
+            // Não impede o uso da tela se a API ainda estiver aquecendo.
+        }
+
+        if (!string.IsNullOrWhiteSpace(ErroGoogle))
+        {
+            _mensagemErro = Uri.UnescapeDataString(ErroGoogle);
+        }
+
+        if (!string.IsNullOrWhiteSpace(GoogleCodigo))
+        {
+            _carregando = true;
+            try
+            {
+                var resultado = await ApiClient.TrocarCodigoGoogleAsync(GoogleCodigo);
+                if (resultado.Autenticacao is not null)
+                {
+                    NavegarDestino();
+                    return;
+                }
+
+                _statusCadastro = resultado;
+                IniciarPollingStatus();
+            }
+            catch (ApiException ex)
+            {
+                _mensagemErro = ex.Message;
+            }
+            catch (Exception ex)
+            {
+                _mensagemErro = "Erro ao concluir login com Google: " + ex.Message;
+            }
+            finally
+            {
+                _carregando = false;
+            }
+            return;
+        }
+
         _biometriaDisponivel = await BiometricAuth.EstaDisponivelAsync();
-        if (_biometriaDisponivel)
+        if (_biometriaDisponivel && string.IsNullOrWhiteSpace(ErroGoogle))
         {
             var temCredenciais = await BiometricAuth.PossuiCredenciaisSalvasAsync();
             var temRefreshToken = !string.IsNullOrWhiteSpace(await TokenStorage.ObterRefreshTokenAsync());
@@ -108,6 +359,33 @@
                 await EntrarComBiometriaAsync(silenciosoSeCancelado: true);
             }
         }
+    }
+
+    private void SelecionarModo(string modo)
+    {
+        _modo = modo;
+        _mensagemErro = null;
+    }
+
+    private void IniciarLoginGoogle()
+    {
+        _mensagemErro = null;
+        if (!_configAuth.GoogleHabilitado)
+        {
+            _mensagemErro = "Login com Google ainda aguarda a configuração de Auth:Google:ClientId e ClientSecret na API.";
+            return;
+        }
+
+        var baseApp = Navegacao.BaseUri.TrimEnd('/');
+        if (baseApp.StartsWith("https://0.0.0.0", StringComparison.OrdinalIgnoreCase)
+            || baseApp.StartsWith("app://", StringComparison.OrdinalIgnoreCase))
+        {
+            _mensagemErro = "O login com Google no aplicativo mobile requer o fluxo externo do navegador configurado. Utilize a Web ou cadastre-se com usuário e senha.";
+            return;
+        }
+
+        var retorno = Uri.EscapeDataString(baseApp);
+        Navegacao.NavigateTo($"{ApiClient.UrlApi}/api/auth/google/iniciar?retorno={retorno}", forceLoad: true);
     }
 
     private async Task EntrarAsync()
@@ -122,8 +400,18 @@
             {
                 await BiometricAuth.SalvarCredenciaisAsync(nomeUsuario, _modelo.Senha);
             }
-            var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
-            Navegacao.NavigateTo(destino, forceLoad: false);
+            NavegarDestino();
+        }
+        catch (ApiException ex) when (ex.EhCadastroPendente && ex.StatusCadastro.HasValue)
+        {
+            _statusCadastro = new StatusCadastroResponse(
+                ex.StatusCadastro.Value,
+                _modelo.NomeUsuario.Trim(),
+                _modelo.NomeUsuario.Trim(),
+                ex.Message,
+                ex.CodigoValidacaoTelegram,
+                ex.LinkTelegramBot);
+            IniciarPollingStatus();
         }
         catch (ApiException ex)
         {
@@ -137,6 +425,144 @@
         {
             _carregando = false;
         }
+    }
+
+    private async Task RegistrarAsync()
+    {
+        _carregando = true;
+        _mensagemErro = null;
+        try
+        {
+            _statusCadastro = await ApiClient.RegistrarAsync(new RegistrarUsuarioRequest(
+                _modeloRegistro.Nome.Trim(),
+                _modeloRegistro.Email.Trim(),
+                _modeloRegistro.NomeUsuario.Trim(),
+                _modeloRegistro.Senha));
+            _modelo.NomeUsuario = _modeloRegistro.NomeUsuario.Trim();
+            IniciarPollingStatus();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = "Erro ao enviar solicitação de cadastro: " + ex.Message;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private async Task ConsultarStatusAgoraAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_statusCadastro?.CodigoValidacaoTelegram))
+        {
+            return;
+        }
+
+        _carregando = true;
+        _mensagemErro = null;
+        try
+        {
+            await AtualizarStatusCadastroAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private async Task AtualizarStatusCadastroAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_statusCadastro?.CodigoValidacaoTelegram))
+        {
+            return;
+        }
+
+        var atualizado = await ApiClient.ObterStatusCadastroAsync(_statusCadastro.CodigoValidacaoTelegram, ct);
+        _statusCadastro = atualizado with
+        {
+            CodigoValidacaoTelegram = atualizado.CodigoValidacaoTelegram ?? _statusCadastro.CodigoValidacaoTelegram,
+            LinkTelegramBot = atualizado.LinkTelegramBot ?? _statusCadastro.LinkTelegramBot
+        };
+
+        if (atualizado.StatusCadastro is StatusCadastroUsuario.Aprovado or StatusCadastroUsuario.Rejeitado)
+        {
+            PararPollingStatus();
+        }
+    }
+
+    private void IniciarPollingStatus()
+    {
+        PararPollingStatus();
+
+        if (_statusCadastro is null
+            || string.IsNullOrWhiteSpace(_statusCadastro.CodigoValidacaoTelegram)
+            || _statusCadastro.StatusCadastro is not (StatusCadastroUsuario.PendenteTelegram or StatusCadastroUsuario.PendenteAprovacaoAdmin))
+        {
+            return;
+        }
+
+        _pollingCts = new CancellationTokenSource();
+        var token = _pollingCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(4));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        try
+                        {
+                            await AtualizarStatusCadastroAsync(token);
+                            StateHasChanged();
+                        }
+                        catch
+                        {
+                            // Ignora falha transitória no polling automático.
+                        }
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, token);
+    }
+
+    private void PararPollingStatus()
+    {
+        if (_pollingCts is null)
+        {
+            return;
+        }
+
+        _pollingCts.Cancel();
+        _pollingCts.Dispose();
+        _pollingCts = null;
+    }
+
+    private void VoltarParaLogin()
+    {
+        PararPollingStatus();
+        _statusCadastro = null;
+        _modo = "login";
+        _mensagemErro = null;
+    }
+
+    private void NavegarDestino()
+    {
+        var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
+        Navegacao.NavigateTo(destino, forceLoad: false);
     }
 
     private async Task EntrarComBiometriaAsync(bool silenciosoSeCancelado)
@@ -167,8 +593,7 @@
 
             if (temRefreshToken && await ApiClient.RestaurarSessaoAsync())
             {
-                var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
-                Navegacao.NavigateTo(destino, forceLoad: false);
+                NavegarDestino();
                 return;
             }
 
@@ -176,8 +601,7 @@
             if (credenciais is not null)
             {
                 await ApiClient.LoginAsync(new LoginRequest(credenciais.NomeUsuario, credenciais.Senha));
-                var destino = string.IsNullOrWhiteSpace(UrlRetorno) ? "/" : Uri.UnescapeDataString(UrlRetorno);
-                Navegacao.NavigateTo(destino, forceLoad: false);
+                NavegarDestino();
                 return;
             }
 
@@ -200,12 +624,35 @@
         }
     }
 
+    public void Dispose() => PararPollingStatus();
+
     private sealed class ModeloLogin
     {
         [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe o usuário.")]
         public string NomeUsuario { get; set; } = string.Empty;
 
         [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe a senha.")]
+        public string Senha { get; set; } = string.Empty;
+    }
+
+    private sealed class ModeloRegistro
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "O nome é obrigatório.")]
+        [System.ComponentModel.DataAnnotations.MaxLength(100, ErrorMessage = "O nome não pode exceder 100 caracteres.")]
+        public string Nome { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "O e-mail é obrigatório.")]
+        [System.ComponentModel.DataAnnotations.EmailAddress(ErrorMessage = "E-mail inválido.")]
+        [System.ComponentModel.DataAnnotations.MaxLength(150, ErrorMessage = "O e-mail não pode exceder 150 caracteres.")]
+        public string Email { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "O nome de usuário é obrigatório.")]
+        [System.ComponentModel.DataAnnotations.MinLength(3, ErrorMessage = "O nome de usuário deve ter ao menos 3 caracteres.")]
+        [System.ComponentModel.DataAnnotations.MaxLength(50, ErrorMessage = "O nome de usuário não pode exceder 50 caracteres.")]
+        public string NomeUsuario { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "A senha é obrigatória.")]
+        [System.ComponentModel.DataAnnotations.MinLength(8, ErrorMessage = "A senha deve ter ao menos 8 caracteres.")]
         public string Senha { get; set; } = string.Empty;
     }
 }

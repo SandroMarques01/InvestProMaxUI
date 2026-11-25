@@ -2,6 +2,7 @@ using InvestProMax.Application.Common;
 using InvestProMax.Application.Common.Exceptions;
 using InvestProMax.Application.Common.Interfaces;
 using InvestProMax.Application.Configuracao;
+using InvestProMax.Application.Cotacoes;
 using InvestProMax.Application.Dividendos;
 using InvestProMax.Application.Segmentos;
 using InvestProMax.Application.Transacoes;
@@ -32,6 +33,7 @@ public sealed class PapelService : IPapelService
     private readonly ISegmentoRepository _segmentoRepository;
     private readonly IUsuarioLogado _usuarioLogado;
     private readonly IMongoBackupService? _mongoBackupService;
+    private readonly IDisparadorAtualizacaoCotacoes? _disparadorCotacoes;
 
     public PapelService(
         IPapelRepository papelRepository,
@@ -40,7 +42,8 @@ public sealed class PapelService : IPapelService
         IDividendoRepository dividendoRepository,
         ISegmentoRepository segmentoRepository,
         IUsuarioLogado usuarioLogado,
-        IMongoBackupService? mongoBackupService = null)
+        IMongoBackupService? mongoBackupService = null,
+        IDisparadorAtualizacaoCotacoes? disparadorCotacoes = null)
     {
         _papelRepository = papelRepository;
         _transacaoRepository = transacaoRepository;
@@ -49,6 +52,7 @@ public sealed class PapelService : IPapelService
         _segmentoRepository = segmentoRepository;
         _usuarioLogado = usuarioLogado;
         _mongoBackupService = mongoBackupService;
+        _disparadorCotacoes = disparadorCotacoes;
     }
 
     public async Task<PaginaResultado<PapelResponse>> ListarAsync(
@@ -86,6 +90,21 @@ public sealed class PapelService : IPapelService
         AplicarSegmentos(papel, request.SegmentoIds);
 
         await _papelRepository.AdicionarAsync(papel, ct);
+
+        if (_disparadorCotacoes is { EstaConfiguradoPorAtivo: true })
+        {
+            var cotacaoWebhook = await _disparadorCotacoes.DispararPorAtivoAsync(
+                papel.Codigo.Trim().ToUpperInvariant(), ct);
+
+            if (cotacaoWebhook is { Atualizado: true, Cotacao: > 0 })
+            {
+                papel.CotacaoAtual = cotacaoWebhook.Cotacao.Value;
+                papel.CotacaoAtualizadaEm = cotacaoWebhook.DataHoraCotacao ?? DateTime.UtcNow;
+                papel.FonteCotacao = string.IsNullOrWhiteSpace(cotacaoWebhook.Fonte) ? "brapi" : cotacaoWebhook.Fonte;
+                await _papelRepository.AtualizarAsync(papel, ct);
+            }
+        }
+
         return ParaResponse(papel);
     }
 

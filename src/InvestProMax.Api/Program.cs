@@ -6,6 +6,7 @@ using InvestProMax.Api.Middleware;
 using InvestProMax.Api.Services;
 using InvestProMax.Api.Swagger;
 using InvestProMax.Application;
+using InvestProMax.Application.Auth;
 using InvestProMax.Application.Common.Interfaces;
 using InvestProMax.Application.Cotacoes;
 using InvestProMax.Infrastructure;
@@ -69,7 +70,7 @@ if (!string.IsNullOrWhiteSpace(cotacoesOptions.ApiKey))
             "Integracao:Cotacoes:ApiKey precisa ter pelo menos 32 caracteres quando a integração estiver habilitada.");
     }
 
-    if (!Guid.TryParse(cotacoesOptions.UsuarioId, out _))
+    if (!string.IsNullOrWhiteSpace(cotacoesOptions.UsuarioId) && !Guid.TryParse(cotacoesOptions.UsuarioId, out _))
     {
         throw new InvalidOperationException(
             "Integracao:Cotacoes:UsuarioId precisa ser um Guid válido quando a integração estiver habilitada.");
@@ -78,6 +79,8 @@ if (!string.IsNullOrWhiteSpace(cotacoesOptions.ApiKey))
 
 builder.Services.Configure<IntegracaoCotacoesOptions>(cotacoesSection);
 builder.Services.Configure<IntegracaoN8nOptions>(builder.Configuration.GetSection(IntegracaoN8nOptions.SecaoConfiguracao));
+builder.Services.Configure<IntegracaoTelegramOptions>(builder.Configuration.GetSection(IntegracaoTelegramOptions.SecaoConfiguracao));
+builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection(GoogleAuthOptions.SecaoConfiguracao));
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -132,6 +135,16 @@ builder.Services.AddMemoryCache();
 
 // Cliente HTTP tipado para webhook do n8n (timeout curto de 10s, sem retentativa automática)
 builder.Services.AddHttpClient<IDisparadorAtualizacaoCotacoes, DisparadorAtualizacaoCotacoes>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
+builder.Services.AddHttpClient<IGoogleAuthProvider, GoogleAuthProvider>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+
+builder.Services.AddHttpClient<INotificadorTelegramService, NotificadorTelegramService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
@@ -222,7 +235,15 @@ if (app.Environment.IsDevelopment())
         try
         {
             logger.LogInformation("Aplicando migrations na base local (LocalDB / localhost)...");
-            await localDb.Database.MigrateAsync();
+            var localConnStr = localDb.Database.GetConnectionString();
+            if (!string.IsNullOrWhiteSpace(localConnStr))
+            {
+                var migrationOpts = new DbContextOptionsBuilder<InvestProMaxDbContext>()
+                    .UseSqlServer(localConnStr)
+                    .Options;
+                await using var migrationCtx = new InvestProMaxDbContext(migrationOpts);
+                await migrationCtx.Database.MigrateAsync();
+            }
             await DbSeeder.SeedUsuarioDevAsync(localDb, passwordHasher, app.Configuration);
         }
         catch (Exception ex)
@@ -282,6 +303,24 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
+    if (!app.Environment.IsEnvironment("Testing"))
+    {
+        using var scope = app.Services.CreateScope();
+        var supabaseDb = scope.ServiceProvider.GetService<SupabaseDbContext>();
+        if (supabaseDb is not null)
+        {
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            try
+            {
+                await DatabaseDualSyncInitializer.EnsureSupabaseSchemaAsync(supabaseDb, logger);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Falha ao garantir o schema idempotente no Supabase durante inicialização em produção.");
+            }
+        }
+    }
+
     // Reforço de segurança (Fase 8): HSTS instrui o navegador a nunca tentar HTTP de novo
     // com este host, mesmo que alguém digite a URL sem "https://" — complementa o
     // UseHttpsRedirection abaixo, que só age depois que a requisição já chegou.

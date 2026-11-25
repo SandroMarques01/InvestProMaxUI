@@ -54,16 +54,20 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
             return Task.FromResult(AuthenticateResult.Fail("Chave de API inválida."));
         }
 
-        if (!Guid.TryParse(_cotacoesOptions.UsuarioId, out var usuarioId))
+        var claims = new List<Claim>
         {
-            return Task.FromResult(AuthenticateResult.Fail("UsuarioId da integração não configurado ou inválido."));
-        }
-
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, usuarioId.ToString()),
-            new Claim(ClaimTypes.AuthenticationMethod, ApiKeyAuthenticationOptions.DefaultScheme)
+            new(ClaimTypes.AuthenticationMethod, ApiKeyAuthenticationOptions.DefaultScheme)
         };
+
+        if (!string.IsNullOrWhiteSpace(_cotacoesOptions.UsuarioId))
+        {
+            if (!Guid.TryParse(_cotacoesOptions.UsuarioId, out var usuarioId))
+            {
+                return Task.FromResult(AuthenticateResult.Fail("UsuarioId da integração não configurado ou inválido."));
+            }
+
+            claims.Add(new Claim(ClaimTypes.NameIdentifier, usuarioId.ToString()));
+        }
 
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var principal = new ClaimsPrincipal(identity);

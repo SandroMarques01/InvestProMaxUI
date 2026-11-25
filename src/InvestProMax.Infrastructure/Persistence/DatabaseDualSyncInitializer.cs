@@ -44,6 +44,14 @@ public static class DatabaseDualSyncInitializer
             ALTER TABLE "Papeis" ADD COLUMN IF NOT EXISTS "FonteCotacao" character varying(30) NULL;
 
             ALTER TABLE "Usuarios" ADD COLUMN IF NOT EXISTS "TelegramId" bigint NULL;
+            ALTER TABLE "Usuarios" ADD COLUMN IF NOT EXISTS "StatusCadastro" integer NOT NULL DEFAULT 0;
+            ALTER TABLE "Usuarios" ADD COLUMN IF NOT EXISTS "GoogleSubject" character varying(150) NULL;
+            ALTER TABLE "Usuarios" ADD COLUMN IF NOT EXISTS "CodigoValidacaoTelegram" character varying(64) NULL;
+            ALTER TABLE "Usuarios" ADD COLUMN IF NOT EXISTS "CodigoValidacaoTelegramExpiraEmUtc" timestamp with time zone NULL;
+            ALTER TABLE "Usuarios" ADD COLUMN IF NOT EXISTS "CriadoEmUtc" timestamp with time zone NULL;
+            ALTER TABLE "Usuarios" ADD COLUMN IF NOT EXISTS "AprovadoEmUtc" timestamp with time zone NULL;
+            CREATE INDEX IF NOT EXISTS "IX_Usuarios_CodigoValidacaoTelegram" ON "Usuarios" ("CodigoValidacaoTelegram");
+            CREATE INDEX IF NOT EXISTS "IX_Usuarios_GoogleSubject" ON "Usuarios" ("GoogleSubject");
             """;
 
         await supabase.Database.ExecuteSqlRawAsync(sqlMigracaoIdempotente, ct);

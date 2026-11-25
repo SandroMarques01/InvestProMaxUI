@@ -479,13 +479,30 @@ namespace InvestProMax.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("AprovadoEmUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("Ativo")
                         .HasColumnType("bit");
+
+                    b.Property<string>("CodigoValidacaoTelegram")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("CodigoValidacaoTelegramExpiraEmUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CriadoEmUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("GoogleSubject")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.Property<string>("Nome")
                         .IsRequired()
@@ -502,13 +519,22 @@ namespace InvestProMax.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int>("StatusCadastro")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<long?>("TelegramId")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CodigoValidacaoTelegram");
+
                     b.HasIndex("Email")
                         .IsUnique();
+
+                    b.HasIndex("GoogleSubject");
 
                     b.HasIndex("NomeUsuario")
                         .IsUnique();

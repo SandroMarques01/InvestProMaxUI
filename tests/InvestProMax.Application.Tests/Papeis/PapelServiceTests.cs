@@ -2,6 +2,7 @@ using FluentAssertions;
 using InvestProMax.Application.Common.Exceptions;
 using InvestProMax.Application.Common.Interfaces;
 using InvestProMax.Application.Configuracao;
+using InvestProMax.Application.Cotacoes;
 using InvestProMax.Application.Dividendos;
 using InvestProMax.Application.Papeis;
 using InvestProMax.Application.Segmentos;
@@ -294,5 +295,47 @@ public class PapelServiceTests
         d.DyPercentual.Should().BeApproximately(4.1667m, 0.0001m); // 0,5 / 12 × 100
         d.Evolucao.Should().Be(50m);
         d.EvolucaoPercentual.Should().Be(5m);
+    }
+
+    [Fact]
+    public async Task Criar_papel_chama_disparador_unitario_e_atualiza_cotacao_quando_retornada()
+    {
+        var disparador = new Mock<IDisparadorAtualizacaoCotacoes>();
+        disparador.SetupGet(d => d.EstaConfiguradoPorAtivo).Returns(true);
+        var dataHora = DateTime.UtcNow;
+        disparador.Setup(d => d.DispararPorAtivoAsync("PETR4", default))
+            .ReturnsAsync(new CotacaoAtivoWebhookResult(true, 41.25m, dataHora, "brapi"));
+
+        var sut = new PapelService(
+            _papelRepository.Object, _transacaoRepository.Object, _movimentoAluguelRepository.Object,
+            _dividendoRepository.Object, _segmentoRepository.Object, _usuarioLogado.Object,
+            _mongoBackupService.Object, disparador.Object);
+
+        var resp = await sut.CriarAsync(new CriarPapelRequest("PETR4", "Petrobras PN", TipoPapel.Acao, 0m, null, null));
+
+        resp.CotacaoAtual.Should().Be(41.25m);
+        resp.CotacaoAtualizadaEm.Should().Be(dataHora);
+        resp.FonteCotacao.Should().Be("brapi");
+        _papelRepository.Verify(r => r.AtualizarAsync(It.Is<Papel>(p => p.Codigo == "PETR4" && p.CotacaoAtual == 41.25m), default), Times.Once);
+    }
+
+    [Fact]
+    public async Task Criar_papel_mantem_cadastro_quando_disparador_unitario_nao_retorna_cotacao()
+    {
+        var disparador = new Mock<IDisparadorAtualizacaoCotacoes>();
+        disparador.SetupGet(d => d.EstaConfiguradoPorAtivo).Returns(true);
+        disparador.Setup(d => d.DispararPorAtivoAsync("KNRI11", default))
+            .ReturnsAsync((CotacaoAtivoWebhookResult?)null);
+
+        var sut = new PapelService(
+            _papelRepository.Object, _transacaoRepository.Object, _movimentoAluguelRepository.Object,
+            _dividendoRepository.Object, _segmentoRepository.Object, _usuarioLogado.Object,
+            _mongoBackupService.Object, disparador.Object);
+
+        var resp = await sut.CriarAsync(new CriarPapelRequest("KNRI11", "Kinea Renda Imob", TipoPapel.FII, 130m, null, null));
+
+        resp.CotacaoAtual.Should().Be(130m);
+        _papelRepository.Verify(r => r.AdicionarAsync(It.Is<Papel>(p => p.Codigo == "KNRI11"), default), Times.Once);
+        _papelRepository.Verify(r => r.AtualizarAsync(It.IsAny<Papel>(), default), Times.Never);
     }
 }

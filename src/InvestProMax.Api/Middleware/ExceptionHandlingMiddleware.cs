@@ -38,6 +38,7 @@ public class ExceptionHandlingMiddleware
         {
             ValidationException => (HttpStatusCode.BadRequest, "Um ou mais campos são inválidos."),
             BadHttpRequestException badRequest => ((HttpStatusCode)badRequest.StatusCode, badRequest.Message),
+            CadastroPendenteException => (HttpStatusCode.Forbidden, ex.Message),
             NaoAutorizadoException => (HttpStatusCode.Unauthorized, ex.Message),
             NaoEncontradoException => (HttpStatusCode.NotFound, ex.Message),
             RegraDeNegocioException => (HttpStatusCode.UnprocessableEntity, ex.Message),
@@ -63,6 +64,18 @@ public class ExceptionHandlingMiddleware
             problemDetails.Extensions["erros"] = validationException.Errors
                 .GroupBy(e => e.PropertyName)
                 .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+        }
+        else if (ex is CadastroPendenteException pendenteException)
+        {
+            problemDetails.Extensions["statusCadastro"] = (int)pendenteException.StatusCadastro;
+            if (!string.IsNullOrWhiteSpace(pendenteException.CodigoValidacaoTelegram))
+            {
+                problemDetails.Extensions["codigoValidacaoTelegram"] = pendenteException.CodigoValidacaoTelegram;
+            }
+            if (!string.IsNullOrWhiteSpace(pendenteException.LinkTelegramBot))
+            {
+                problemDetails.Extensions["linkTelegramBot"] = pendenteException.LinkTelegramBot;
+            }
         }
 
         context.Response.StatusCode = (int)status;

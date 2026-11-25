@@ -201,7 +201,13 @@ public sealed class ReplicaSaveChangesInterceptor : SaveChangesInterceptor
             NomeUsuario = u.NomeUsuario,
             SenhaHash = u.SenhaHash,
             Ativo = u.Ativo,
-            TelegramId = u.TelegramId
+            StatusCadastro = u.StatusCadastro,
+            TelegramId = u.TelegramId,
+            GoogleSubject = u.GoogleSubject,
+            CodigoValidacaoTelegram = u.CodigoValidacaoTelegram,
+            CodigoValidacaoTelegramExpiraEmUtc = NormalizarUtc(u.CodigoValidacaoTelegramExpiraEmUtc),
+            CriadoEmUtc = NormalizarUtc(u.CriadoEmUtc),
+            AprovadoEmUtc = NormalizarUtc(u.AprovadoEmUtc)
         },
         Segmento s => new Segmento
         {

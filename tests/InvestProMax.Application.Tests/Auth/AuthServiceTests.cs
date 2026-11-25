@@ -3,6 +3,7 @@ using InvestProMax.Application.Auth;
 using InvestProMax.Application.Common.Exceptions;
 using InvestProMax.Application.Common.Interfaces;
 using InvestProMax.Domain.Entidades;
+using InvestProMax.Domain.Enums;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
@@ -244,5 +245,101 @@ public class AuthServiceTests
 
         resposta.AccessToken.Should().Be("access-token-falso");
         _usuarioRepository.Verify(r => r.ObterPorNomeUsuarioAsync("joao", default), Times.Once);
+    }
+
+    [Fact]
+    public async Task Registrar_cria_usuario_pendente_telegram_e_bloqueia_login_ate_aprovacao_admin()
+    {
+        Usuario? usuarioSalvo = null;
+        _usuarioRepository.Setup(r => r.ExisteNomeUsuarioAsync("maria", default)).ReturnsAsync(false);
+        _usuarioRepository.Setup(r => r.ExisteEmailAsync("maria@teste.com", default)).ReturnsAsync(false);
+        _passwordHasher.Setup(p => p.Hash("Senha@123")).Returns("hash-maria");
+        _usuarioRepository.Setup(r => r.AdicionarAsync(It.IsAny<Usuario>(), default))
+            .Callback<Usuario, CancellationToken>((u, _) => usuarioSalvo = u)
+            .Returns(Task.CompletedTask);
+
+        var notificador = new Mock<INotificadorTelegramService>();
+        notificador.Setup(n => n.MontarLinkValidacao(It.IsAny<string>()))
+            .Returns<string>(c => $"https://t.me/MarkX_InvestProMax_MarquesFC_bot?start={c}");
+        notificador.Setup(n => n.ObterAdminsConfigurados()).Returns([999999L]);
+
+        var sut = new AuthService(
+            _usuarioRepository.Object, _refreshTokenRepository.Object,
+            _passwordHasher.Object, _tokenService.Object,
+            Options.Create(new AuthOptions { RefreshTokenDuracaoDias = 7 }),
+            notificador.Object);
+
+        var registro = await sut.RegistrarAsync(new RegistrarUsuarioRequest("Maria", "maria@teste.com", "maria", "Senha@123"));
+
+        registro.StatusCadastro.Should().Be(StatusCadastroUsuario.PendenteTelegram);
+        registro.CodigoValidacaoTelegram.Should().StartWith("ipm_");
+        registro.LinkTelegramBot.Should().Contain(registro.CodigoValidacaoTelegram);
+        usuarioSalvo.Should().NotBeNull();
+        usuarioSalvo!.Ativo.Should().BeFalse();
+
+        // Tentativa de login antes da validação no Telegram -> CadastroPendenteException(PendenteTelegram)
+        _usuarioRepository.Setup(r => r.ObterPorNomeUsuarioAsync("maria", default)).ReturnsAsync(usuarioSalvo);
+        _passwordHasher.Setup(p => p.Verificar("Senha@123", "hash-maria")).Returns(true);
+
+        var acaoAntesTelegram = () => sut.LoginAsync(new LoginRequest("maria", "Senha@123"));
+        var ex1 = await acaoAntesTelegram.Should().ThrowAsync<CadastroPendenteException>();
+        ex1.Which.StatusCadastro.Should().Be(StatusCadastroUsuario.PendenteTelegram);
+
+        // Validação no Telegram -> muda para PendenteAprovacaoAdmin e salva TelegramId
+        _usuarioRepository.Setup(r => r.ObterPorCodigoTelegramAsync(registro.CodigoValidacaoTelegram!, default))
+            .ReturnsAsync(usuarioSalvo);
+        _usuarioRepository.Setup(r => r.ListarTelegramIdsAdminsAsync(default)).ReturnsAsync([]);
+
+        var respTelegram = await sut.ValidarTelegramAsync(new ValidarTelegramRequest(registro.CodigoValidacaoTelegram!, 555123456L));
+        respTelegram.Sucesso.Should().BeTrue();
+        respTelegram.TelegramId.Should().Be(555123456L);
+        respTelegram.AdminTelegramIds.Should().Contain(999999L);
+        usuarioSalvo.StatusCadastro.Should().Be(StatusCadastroUsuario.PendenteAprovacaoAdmin);
+
+        // Admin aprova -> libera usuário e notifica no Telegram
+        _usuarioRepository.Setup(r => r.ObterPorIdAsync(usuarioSalvo.Id, default)).ReturnsAsync(usuarioSalvo);
+        var aprovado = await sut.AprovarUsuarioAsync(usuarioSalvo.Id);
+
+        aprovado.Ativo.Should().BeTrue();
+        aprovado.StatusCadastro.Should().Be(StatusCadastroUsuario.Aprovado);
+        notificador.Verify(n => n.NotificarUsuarioAsync(555123456L, It.Is<string>(m => m.Contains("aprovado")), default), Times.Once);
+
+        // Login liberado após aprovação
+        _tokenService.Setup(t => t.GerarAccessToken(usuarioSalvo))
+            .Returns(new TokenGerado("jwt-ok", DateTime.UtcNow.AddMinutes(20)));
+        var loginOk = await sut.LoginAsync(new LoginRequest("maria", "Senha@123"));
+        loginOk.AccessToken.Should().Be("jwt-ok");
+    }
+
+    [Fact]
+    public async Task AutenticarComGoogle_cria_usuario_pendente_quando_novo_e_libera_quando_aprovado()
+    {
+        Usuario? usuarioSalvo = null;
+        _usuarioRepository.Setup(r => r.ObterPorGoogleSubjectAsync("sub-123", default)).ReturnsAsync((Usuario?)null);
+        _usuarioRepository.Setup(r => r.ObterPorEmailAsync("joao.silva@gmail.com", default)).ReturnsAsync((Usuario?)null);
+        _usuarioRepository.Setup(r => r.ExisteNomeUsuarioAsync("joao.silva", default)).ReturnsAsync(false);
+        _passwordHasher.Setup(p => p.Hash(It.IsAny<string>())).Returns("hash-random");
+        _usuarioRepository.Setup(r => r.AdicionarAsync(It.IsAny<Usuario>(), default))
+            .Callback<Usuario, CancellationToken>((u, _) => usuarioSalvo = u)
+            .Returns(Task.CompletedTask);
+
+        var respNovo = await _sut.AutenticarComGoogleAsync(new GoogleUsuarioInfo("sub-123", "joao.silva@gmail.com", "João Silva", true));
+
+        respNovo.StatusCadastro.Should().Be(StatusCadastroUsuario.PendenteTelegram);
+        respNovo.Autenticacao.Should().BeNull();
+        respNovo.CodigoValidacaoTelegram.Should().StartWith("ipm_");
+        usuarioSalvo!.GoogleSubject.Should().Be("sub-123");
+        usuarioSalvo.Ativo.Should().BeFalse();
+
+        // Aprovado posteriormente -> login Google emite JWT
+        usuarioSalvo.StatusCadastro = StatusCadastroUsuario.Aprovado;
+        usuarioSalvo.Ativo = true;
+        _usuarioRepository.Setup(r => r.ObterPorGoogleSubjectAsync("sub-123", default)).ReturnsAsync(usuarioSalvo);
+        _tokenService.Setup(t => t.GerarAccessToken(usuarioSalvo))
+            .Returns(new TokenGerado("jwt-google", DateTime.UtcNow.AddMinutes(20)));
+
+        var respAprovado = await _sut.AutenticarComGoogleAsync(new GoogleUsuarioInfo("sub-123", "joao.silva@gmail.com", "João Silva", true));
+        respAprovado.StatusCadastro.Should().Be(StatusCadastroUsuario.Aprovado);
+        respAprovado.Autenticacao!.AccessToken.Should().Be("jwt-google");
     }
 }

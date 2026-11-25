@@ -21,3 +21,11 @@ public enum Recorrencia { Mensal = 1, Anual = 2, Parcelada = 3, Unica = 4 }
 public enum StatusFatura { Pendente = 1, Paga = 2, Atrasada = 3, Cancelada = 4 }
 
 public enum TipoEventoPapel { Desdobramento = 1, Grupamento = 2 }
+
+public enum StatusCadastroUsuario
+{
+    Aprovado = 0,
+    PendenteTelegram = 1,
+    PendenteAprovacaoAdmin = 2,
+    Rejeitado = 3
+}

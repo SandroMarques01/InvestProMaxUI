@@ -50,6 +50,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 ["Auth:RefreshTokenDuracaoDias"] = "7",
                 ["ConnectionStrings:InvestProMaxDb"] = "unused-because-provider-is-replaced-below",
                 ["ConnectionStrings:SupabaseDb"] = "",
+                ["Integracao:N8n:WebhookUrl"] = "",
+                ["Integracao:N8n:WebhookCotacaoAtivoUrl"] = "",
+                ["Integracao:N8n:WebhookNotificarTelegramUrl"] = "",
                 ["Cors:OrigensPermitidas:0"] = "https://localhost"
             });
         });

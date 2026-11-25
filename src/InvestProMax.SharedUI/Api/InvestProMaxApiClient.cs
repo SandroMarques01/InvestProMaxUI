@@ -34,6 +34,11 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
 
     // ===== Auth =====
 
+    public async Task<AuthConfigPublicaResponse> ObterConfigPublicaAuthAsync(CancellationToken ct = default)
+    {
+        return await EnviarPublicoGetAsync<AuthConfigPublicaResponse>("api/auth/config-publica", ct);
+    }
+
     public async Task<AutenticacaoResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         try
@@ -57,6 +62,34 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
             throw new ApiException(0, $"Não foi possível conectar ao servidor da API ({UrlApi}). Verifique se o back-end está em execução.", ex);
         }
     }
+
+    public Task<StatusCadastroResponse> RegistrarAsync(RegistrarUsuarioRequest request, CancellationToken ct = default) =>
+        EnviarPublicoPostAsync<StatusCadastroResponse>("api/auth/registrar", request, ct);
+
+    public Task<StatusCadastroResponse> ObterStatusCadastroAsync(string codigo, CancellationToken ct = default) =>
+        EnviarPublicoGetAsync<StatusCadastroResponse>($"api/auth/cadastro/status?codigo={Uri.EscapeDataString(codigo)}", ct);
+
+    public async Task<StatusCadastroResponse> TrocarCodigoGoogleAsync(string codigo, CancellationToken ct = default)
+    {
+        var resultado = await EnviarPublicoPostAsync<StatusCadastroResponse>(
+            "api/auth/google/trocar", new TrocarCodigoGoogleRequest(codigo), ct);
+
+        if (resultado.Autenticacao is not null)
+        {
+            await AplicarSessaoAsync(resultado.Autenticacao);
+        }
+
+        return resultado;
+    }
+
+    public Task<IReadOnlyList<UsuarioResponse>> ListarUsuariosAsync(CancellationToken ct = default) =>
+        ObterAsync<IReadOnlyList<UsuarioResponse>>("api/auth/usuarios", ct);
+
+    public Task<UsuarioResponse> AprovarUsuarioAsync(Guid id, CancellationToken ct = default) =>
+        EnviarJsonAsync<UsuarioResponse>(HttpMethod.Post, $"api/auth/usuarios/{id}/aprovar", null, ct);
+
+    public Task<UsuarioResponse> RejeitarUsuarioAsync(Guid id, CancellationToken ct = default) =>
+        EnviarJsonAsync<UsuarioResponse>(HttpMethod.Post, $"api/auth/usuarios/{id}/rejeitar", null, ct);
 
     public async Task AlterarSenhaAsync(AlterarSenhaRequest request, CancellationToken ct = default) =>
         await EnviarSemRespostaAsync(HttpMethod.Post, "api/auth/alterar-senha", request, ct);
@@ -434,6 +467,48 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
         _ => valor.ToString() ?? string.Empty
     };
 
+    private async Task<T> EnviarPublicoGetAsync<T>(string url, CancellationToken ct)
+    {
+        try
+        {
+            using var resposta = await _http.GetAsync(url, ct);
+            if (!resposta.IsSuccessStatusCode)
+            {
+                throw await CriarExcecaoAsync(resposta, ct);
+            }
+            return (await resposta.Content.ReadFromJsonAsync<T>(JsonOptions, ct))!;
+        }
+        catch (ApiException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ApiException(0, $"Não foi possível conectar ao servidor da API ({UrlApi}). Verifique se o back-end está em execução.", ex);
+        }
+    }
+
+    private async Task<T> EnviarPublicoPostAsync<T>(string url, object? corpo, CancellationToken ct)
+    {
+        try
+        {
+            using var resposta = await _http.PostAsJsonAsync(url, corpo, JsonOptions, ct);
+            if (!resposta.IsSuccessStatusCode)
+            {
+                throw await CriarExcecaoAsync(resposta, ct);
+            }
+            return (await resposta.Content.ReadFromJsonAsync<T>(JsonOptions, ct))!;
+        }
+        catch (ApiException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ApiException(0, $"Não foi possível conectar ao servidor da API ({UrlApi}). Verifique se o back-end está em execução.", ex);
+        }
+    }
+
     private static async Task<ApiException> CriarExcecaoAsync(HttpResponseMessage resposta, CancellationToken ct)
     {
         var statusCode = (int)resposta.StatusCode;
@@ -441,7 +516,15 @@ public sealed class InvestProMaxApiClient : IInvestProMaxApiClient
         {
             var problema = await resposta.Content.ReadFromJsonAsync<ProblemDetailsResponse>(JsonOptions, ct);
             var mensagem = problema?.Detail ?? problema?.Title ?? resposta.ReasonPhrase ?? "Erro ao comunicar com a API.";
-            return new ApiException(statusCode, mensagem);
+            StatusCadastroUsuario? statusCadastro = problema?.StatusCadastro.HasValue == true
+                ? (StatusCadastroUsuario)problema.StatusCadastro.Value
+                : null;
+            return new ApiException(
+                statusCode,
+                mensagem,
+                statusCadastro: statusCadastro,
+                codigoValidacaoTelegram: problema?.CodigoValidacaoTelegram,
+                linkTelegramBot: problema?.LinkTelegramBot);
         }
         catch (JsonException)
         {

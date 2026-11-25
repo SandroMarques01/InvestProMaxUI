@@ -40,3 +40,32 @@ public sealed class CriarUsuarioRequestValidator : AbstractValidator<CriarUsuari
             .WithMessage("A senha deve ter ao menos 8 caracteres.");
     }
 }
+
+public sealed class RegistrarUsuarioRequestValidator : AbstractValidator<RegistrarUsuarioRequest>
+{
+    public RegistrarUsuarioRequestValidator()
+    {
+        RuleFor(x => x.Nome).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(150);
+        RuleFor(x => x.NomeUsuario).NotEmpty().MinimumLength(3).MaximumLength(50);
+        RuleFor(x => x.Senha).NotEmpty().MinimumLength(8)
+            .WithMessage("A senha deve ter ao menos 8 caracteres.");
+    }
+}
+
+public sealed class TrocarCodigoGoogleRequestValidator : AbstractValidator<TrocarCodigoGoogleRequest>
+{
+    public TrocarCodigoGoogleRequestValidator()
+    {
+        RuleFor(x => x.Codigo).NotEmpty();
+    }
+}
+
+public sealed class ValidarTelegramRequestValidator : AbstractValidator<ValidarTelegramRequest>
+{
+    public ValidarTelegramRequestValidator()
+    {
+        RuleFor(x => x.Codigo).NotEmpty().MaximumLength(120);
+        RuleFor(x => x.TelegramId).GreaterThan(0);
+    }
+}

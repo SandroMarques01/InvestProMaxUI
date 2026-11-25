@@ -23,7 +23,7 @@
     </button>
     @if (EhAdmin)
     {
-        <button type="button" class="@(_abaAtiva == "usuarios" ? "active" : "")" @onclick="@(() => _abaAtiva = "usuarios")">
+        <button type="button" class="@(_abaAtiva == "usuarios" ? "active" : "")" @onclick="AbrirAbaUsuariosAsync">
             Usuários
         </button>
     }
@@ -89,7 +89,7 @@
 
             @if (EhAdmin)
             {
-                <button type="button" class="user-popover-item" @onclick="@(() => _abaAtiva = "usuarios")">
+                <button type="button" class="user-popover-item" @onclick="AbrirAbaUsuariosAsync">
                     <Icon Name="assets" Size="16" />
                     <div class="user-popover-item-body">
                         <span>Gerenciar usuários</span>
@@ -611,11 +611,193 @@ else if (_abaAtiva == "conta")
 }
 else if (_abaAtiva == "usuarios" && EhAdmin)
 {
+    var pendentes = _usuarios
+        .Where(u => u.StatusCadastro is StatusCadastroUsuario.PendenteAprovacaoAdmin or StatusCadastroUsuario.PendenteTelegram)
+        .ToList();
+
+    @if (pendentes.Count > 0)
+    {
+        <section class="card" style="margin-bottom: 18px; border-left: 3px solid var(--primary);">
+            <div class="section-title">
+                <div>
+                    <h2>Solicitações de cadastro pendentes (@pendentes.Count)</h2>
+                    <p>Novos usuários aguardando validação do Telegram ou aprovação do administrador</p>
+                </div>
+                <button type="button" class="btn btn-secondary" @onclick="CarregarUsuariosAsync" disabled="@(_carregandoUsuarios || _processando)">
+                    <Icon Name="refresh" Size="15" />
+                    <span>Atualizar</span>
+                </button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                @foreach (var u in pendentes)
+                {
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-alt);">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <strong>@u.Nome</strong>
+                                <span style="color: var(--muted); font-size: 12px;">(@@@u.NomeUsuario)</span>
+                                <span class="badge badge-neutral" style="font-size: 10px;">@(u.PossuiGoogle ? "Google" : "Senha")</span>
+                                @if (u.StatusCadastro == StatusCadastroUsuario.PendenteAprovacaoAdmin)
+                                {
+                                    <span class="badge badge-positive" style="font-size: 10px;">Telegram OK · Aguardando Admin</span>
+                                }
+                                else
+                                {
+                                    <span class="badge" style="font-size: 10px;">Aguardando Telegram</span>
+                                }
+                            </div>
+                            <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">
+                                @u.Email
+                                @if (u.TelegramId is > 0)
+                                {
+                                    <span> · Telegram ID: <code>@u.TelegramId</code></span>
+                                }
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button"
+                                    class="btn btn-primary"
+                                    disabled="@_processando"
+                                    @onclick="() => DecidirUsuarioAsync(u.Id, true)">
+                                Aprovar
+                            </button>
+                            <button type="button"
+                                    class="btn btn-danger"
+                                    disabled="@_processando"
+                                    @onclick="() => DecidirUsuarioAsync(u.Id, false)">
+                                Rejeitar
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    <section class="card" style="margin-bottom: 18px;">
+        <div class="section-title">
+            <div>
+                <h2>Usuários da plataforma</h2>
+                <p>Gerencie aprovações, vínculos com Telegram e status das contas cadastradas</p>
+            </div>
+            <button type="button" class="btn btn-secondary" @onclick="CarregarUsuariosAsync" disabled="@(_carregandoUsuarios || _processando)">
+                <Icon Name="refresh" Size="15" />
+                <span>@(_carregandoUsuarios ? "Carregando..." : "Atualizar lista")</span>
+            </button>
+        </div>
+
+        @if (_carregandoUsuarios && _usuarios.Count == 0)
+        {
+            <p style="color: var(--muted); font-size: 13px;">Carregando usuários...</p>
+        }
+        else if (_usuarios.Count == 0)
+        {
+            <p style="color: var(--muted); font-size: 13px;">Nenhum usuário encontrado.</p>
+        }
+        else
+        {
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Usuário</th>
+                            <th>E-mail</th>
+                            <th class="alinhar-centro">Origem</th>
+                            <th class="alinhar-centro">Telegram ID</th>
+                            <th class="alinhar-centro">Status</th>
+                            <th class="alinhar-direita">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in _usuarios)
+                        {
+                            var ehProprioAdmin = string.Equals(u.NomeUsuario, "admin", StringComparison.OrdinalIgnoreCase);
+                            <tr>
+                                <td><strong>@u.Nome</strong></td>
+                                <td><code>@u.NomeUsuario</code></td>
+                                <td>@u.Email</td>
+                                <td class="alinhar-centro">
+                                    <span class="badge badge-neutral" style="font-size: 10px;">
+                                        @(u.PossuiGoogle ? "Google" : "Senha")
+                                    </span>
+                                </td>
+                                <td class="alinhar-centro">
+                                    @if (u.TelegramId is > 0)
+                                    {
+                                        <code>@u.TelegramId</code>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--muted);">—</span>
+                                    }
+                                </td>
+                                <td class="alinhar-centro">
+                                    @switch (u.StatusCadastro)
+                                    {
+                                        case StatusCadastroUsuario.Aprovado when u.Ativo:
+                                            <span class="badge badge-positive">Aprovado</span>
+                                            break;
+                                        case StatusCadastroUsuario.Aprovado:
+                                            <span class="badge badge-negative">Inativo</span>
+                                            break;
+                                        case StatusCadastroUsuario.PendenteAprovacaoAdmin:
+                                            <span class="badge">Aguardando Admin</span>
+                                            break;
+                                        case StatusCadastroUsuario.PendenteTelegram:
+                                            <span class="badge">Aguardando Telegram</span>
+                                            break;
+                                        default:
+                                            <span class="badge badge-negative">Rejeitado</span>
+                                            break;
+                                    }
+                                </td>
+                                <td class="alinhar-direita">
+                                    @if (!ehProprioAdmin)
+                                    {
+                                        <div style="display: inline-flex; gap: 6px;">
+                                            @if (u.StatusCadastro != StatusCadastroUsuario.Aprovado || !u.Ativo)
+                                            {
+                                                <button type="button"
+                                                        class="btn btn-primary"
+                                                        style="padding: 4px 10px; font-size: 11px;"
+                                                        disabled="@_processando"
+                                                        @onclick="() => DecidirUsuarioAsync(u.Id, true)">
+                                                    Aprovar
+                                                </button>
+                                            }
+                                            @if (u.StatusCadastro != StatusCadastroUsuario.Rejeitado)
+                                            {
+                                                <button type="button"
+                                                        class="btn btn-danger"
+                                                        style="padding: 4px 10px; font-size: 11px;"
+                                                        disabled="@_processando"
+                                                        @onclick="() => DecidirUsuarioAsync(u.Id, false)">
+                                                    @(u.StatusCadastro == StatusCadastroUsuario.Aprovado ? "Desativar" : "Rejeitar")
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--muted); font-size: 11px;">Administrador</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
     <section class="card settings-form">
         <div class="section-title">
             <div>
                 <h2>Criar novo usuário</h2>
-                <p>Cadastre novos usuários com acesso ao sistema</p>
+                <p>Cadastre manualmente usuários já aprovados para acesso imediato ao sistema</p>
             </div>
         </div>
 
@@ -927,10 +1109,60 @@ else if (_abaAtiva == "ambiente")
     private bool _processando;
     private InfoAmbienteResponse? _infoAmbiente;
     private bool _carregandoAmbiente;
+    private IReadOnlyList<UsuarioResponse> _usuarios = [];
+    private bool _carregandoUsuarios;
 
     protected override async Task OnInitializedAsync()
     {
         await CarregarInfoAmbienteAsync();
+    }
+
+    private async Task AbrirAbaUsuariosAsync()
+    {
+        _abaAtiva = "usuarios";
+        await CarregarUsuariosAsync();
+    }
+
+    private async Task CarregarUsuariosAsync()
+    {
+        _carregandoUsuarios = true;
+        try
+        {
+            _usuarios = await ApiClient.ListarUsuariosAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _carregandoUsuarios = false;
+        }
+    }
+
+    private async Task DecidirUsuarioAsync(Guid usuarioId, bool aprovar)
+    {
+        _mensagemErro = null;
+        _mensagemSucesso = null;
+        _processando = true;
+        try
+        {
+            var atualizado = aprovar
+                ? await ApiClient.AprovarUsuarioAsync(usuarioId)
+                : await ApiClient.RejeitarUsuarioAsync(usuarioId);
+            _mensagemSucesso = aprovar
+                ? $"Usuário '{atualizado.NomeUsuario}' aprovado com sucesso."
+                : $"Solicitação de '{atualizado.NomeUsuario}' rejeitada/desativada.";
+            await CarregarUsuariosAsync();
+        }
+        catch (ApiException ex)
+        {
+            _mensagemErro = ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
     }
 
     private async Task AbrirAbaAmbienteAsync()
@@ -1321,6 +1553,7 @@ else if (_abaAtiva == "ambiente")
             _modeloCriarUsuario.Email = string.Empty;
             _modeloCriarUsuario.NomeUsuario = string.Empty;
             _modeloCriarUsuario.Senha = string.Empty;
+            await CarregarUsuariosAsync();
         }
         catch (ApiException ex)
         {

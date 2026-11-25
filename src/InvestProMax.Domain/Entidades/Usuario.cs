@@ -1,4 +1,5 @@
 using InvestProMax.Domain.Common;
+using InvestProMax.Domain.Enums;
 
 namespace InvestProMax.Domain.Entidades;
 
@@ -16,8 +17,16 @@ public class Usuario : EntidadeBase
 
     public bool Ativo { get; set; } = true;
 
+    public StatusCadastroUsuario StatusCadastro { get; set; } = StatusCadastroUsuario.Aprovado;
+
     /// <summary>Identificador do usuário no Telegram (64-bit), utilizado em integrações como n8n e bots.</summary>
     public long? TelegramId { get; set; }
+
+    public string? GoogleSubject { get; set; }
+    public string? CodigoValidacaoTelegram { get; set; }
+    public DateTime? CodigoValidacaoTelegramExpiraEmUtc { get; set; }
+    public DateTime? CriadoEmUtc { get; set; }
+    public DateTime? AprovadoEmUtc { get; set; }
 
     public ICollection<Papel> Papeis { get; set; } = new List<Papel>();
     public ICollection<Ativo> Ativos { get; set; } = new List<Ativo>();
